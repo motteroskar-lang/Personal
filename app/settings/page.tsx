@@ -13,8 +13,10 @@ function SettingsContent() {
   const searchParams = useSearchParams();
   const [integrations, setIntegrations] = useState<Integrations>({ garmin: false, revolut: false, google: false });
   const [apiKey, setApiKey] = useState("");
-  const [garminKey, setGarminKey] = useState("");
-  const [garminSecret, setGarminSecret] = useState("");
+  const [garminEmail, setGarminEmail] = useState("");
+  const [garminPassword, setGarminPassword] = useState("");
+  const [garminStatus, setGarminStatus] = useState("");
+  const [garminLoading, setGarminLoading] = useState(false);
   const [revClientId, setRevClientId] = useState("");
   const [revClientSecret, setRevClientSecret] = useState("");
   const [wakeTime, setWakeTime] = useState("06:00");
@@ -46,8 +48,6 @@ function SettingsContent() {
         sleep_time: sleepTime,
       };
       if (apiKey) payload.anthropic_api_key = apiKey;
-      if (garminKey) payload.garmin_consumer_key = garminKey;
-      if (garminSecret) payload.garmin_consumer_secret = garminSecret;
       if (revClientId) payload.revolut_client_id = revClientId;
       if (revClientSecret) payload.revolut_client_secret = revClientSecret;
 
@@ -60,6 +60,35 @@ function SettingsContent() {
       setTimeout(() => setSaved(false), 2000);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const connectGarmin = async () => {
+    if (!garminEmail || !garminPassword) {
+      setGarminStatus("Email und Passwort eingeben");
+      return;
+    }
+    setGarminLoading(true);
+    setGarminStatus("");
+    try {
+      const res = await fetch("/api/garmin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: garminEmail, password: garminPassword }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setGarminStatus(`✓ Verbunden als ${data.displayName}`);
+        setIntegrations(p => ({ ...p, garmin: true }));
+        setGarminEmail("");
+        setGarminPassword("");
+      } else {
+        setGarminStatus(`✗ ${data.error}`);
+      }
+    } catch {
+      setGarminStatus("✗ Verbindung fehlgeschlagen");
+    } finally {
+      setGarminLoading(false);
     }
   };
 
@@ -168,21 +197,28 @@ function SettingsContent() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="font-semibold flex items-center gap-2">
-                ⌚ Garmin Connect API
-                {integrations.garmin ? <Badge variant="success">Connected</Badge> : <Badge variant="default">Not Connected</Badge>}
+                ⌚ Garmin Connect
+                {integrations.garmin ? <Badge variant="success">Verbunden</Badge> : <Badge variant="default">Nicht verbunden</Badge>}
               </div>
-              <p className="text-xs text-[#76746E] mt-1">Syncs sleep, HRV, resting heart rate, respiratory rate, and body battery.</p>
+              <p className="text-xs text-[#76746E] mt-1">Synct Schlaf, HRV, Ruheherzfrequenz, Body Battery automatisch. Kein Consumer Key nötig.</p>
             </div>
           </div>
           <div className="space-y-3">
-            <Input label="Consumer Key" type="password" value={garminKey} onChange={e => setGarminKey(e.target.value)} placeholder="Your Garmin API consumer key" />
-            <Input label="Consumer Secret" type="password" value={garminSecret} onChange={e => setGarminSecret(e.target.value)} placeholder="Your Garmin API consumer secret" />
+            <Input label="Garmin Connect Email" type="email" value={garminEmail} onChange={e => setGarminEmail(e.target.value)} placeholder="deine@email.de" />
+            <Input label="Garmin Connect Passwort" type="password" value={garminPassword} onChange={e => setGarminPassword(e.target.value)} placeholder="••••••••" />
           </div>
-          <div className="mt-4 p-3 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-[#76746E] space-y-1">
-            <p className="font-semibold text-[#B8B6B0]">Setup:</p>
-            <p>1. Bewirb dich für Garmin Health API Zugang auf developer.garmin.com</p>
-            <p>2. Consumer Key + Secret holen</p>
-            <p>3. Callback URL: <span className="font-mono text-[#F2C063]">https://personal-orcin-eight.vercel.app/api/garmin/callback</span></p>
+          {garminStatus && (
+            <p className={`text-xs mt-3 ${garminStatus.startsWith("✓") ? "text-[#6BE3A4]" : "text-[#FF6B6B]"}`}>
+              {garminStatus}
+            </p>
+          )}
+          <div className="mt-4 p-3 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-[#76746E]">
+            <p className="text-[#F2C063]">⚠️ Falls du 2-Faktor-Auth (2FA) aktiviert hast: Garmin Connect App → Profil → Einstellungen → Konto → Zwei-Faktor-Authentifizierung → deaktivieren für die erste Verbindung.</p>
+          </div>
+          <div className="mt-4">
+            <Button variant="secondary" size="sm" onClick={connectGarmin} loading={garminLoading}>
+              🔗 Mit Garmin verbinden
+            </Button>
           </div>
         </Card>
       </div>
