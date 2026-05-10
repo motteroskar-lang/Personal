@@ -30,6 +30,11 @@ export async function POST(req: NextRequest) {
       [date]
     );
 
+    const [wakeRow, sleepRow] = await Promise.all([
+      dbGet<{ value: string }>("SELECT value FROM settings WHERE key = 'wake_time'"),
+      dbGet<{ value: string }>("SELECT value FROM settings WHERE key = 'sleep_time'"),
+    ]);
+
     const plan = await generateDailyPlan({
       goals,
       recentHealth: health ?? undefined,
@@ -37,6 +42,8 @@ export async function POST(req: NextRequest) {
       nutrition: nutrition ?? undefined,
       screenTime: screenTime ?? undefined,
       todayDate: date,
+      wakeTime: wakeRow?.value ?? "06:00",
+      sleepTime: sleepRow?.value ?? "22:00",
     });
 
     await dbRun("DELETE FROM daily_tasks WHERE date = ? AND ai_generated = 1", [date]);

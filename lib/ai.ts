@@ -16,12 +16,17 @@ export async function generateDailyPlan(context: {
   nutrition?: { calories: number; protein: number };
   screenTime?: { total_minutes: number };
   todayDate: string;
+  wakeTime?: string;
+  sleepTime?: string;
 }): Promise<{ tasks: string[]; insight: string; urgentAlert?: string }> {
   const client = getAIClient();
 
   const systemPrompt = `You are a ruthless personal performance coach AI. You have full context of the user's health, fitness, nutrition, goals, and habits. You speak directly and hold them accountable. You calculate exactly what they need to do TODAY to stay on track for their long-term goals. You consider their recovery state (HRV, sleep) when recommending training intensity. You are specific with numbers.`;
 
-  const userPrompt = `Today is ${context.todayDate}. Based on this data, generate a prioritized daily action plan:
+  const wakeStr = context.wakeTime ?? "06:00";
+  const sleepStr = context.sleepTime ?? "22:00";
+
+  const userPrompt = `Today is ${context.todayDate}. Wake time: ${wakeStr}, Sleep time: ${sleepStr} (${Math.round((parseInt(sleepStr) - parseInt(wakeStr)) * 60 / 60)} usable hours). Based on this data, generate a prioritized daily action plan:
 
 LONG-TERM GOALS:
 ${context.goals.map(g => `- [${g.urgency.toUpperCase()}] ${g.title} (${g.category}${g.deadline ? `, deadline: ${g.deadline}` : ""})`).join("\n")}

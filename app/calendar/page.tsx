@@ -16,6 +16,7 @@ interface CalendarEvent {
   time?: string;
   type: string;
   notes?: string;
+  source?: string;
 }
 
 const EVENT_TYPES = [
@@ -41,6 +42,8 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(new Date());
   const [dayEvents, setDayEvents] = useState<CalendarEvent[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
   const [form, setForm] = useState({ title: "", date: format(new Date(), "yyyy-MM-dd"), time: "", type: "workout", notes: "" });
 
   const monthStr = format(currentMonth, "yyyy-MM");
@@ -64,6 +67,26 @@ export default function CalendarPage() {
       setDayEvents(filtered);
     }
   }, [selectedDay, events]);
+
+  const syncGoogle = async () => {
+    setSyncing(true);
+    setSyncMsg("");
+    try {
+      const res = await fetch("/api/calendar/google/sync", { method: "POST" });
+      const data = await res.json();
+      if (data.error) {
+        setSyncMsg(data.error);
+      } else {
+        setSyncMsg(`✓ ${data.synced} events synced`);
+        await load();
+      }
+    } catch {
+      setSyncMsg("Sync failed");
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(""), 4000);
+    }
+  };
 
   const addEvent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,11 +125,15 @@ export default function CalendarPage() {
           <div className="text-[11px] font-mono font-bold tracking-[0.18em] uppercase text-[#76746E] mb-1">Schedule & Planning</div>
           <h1 className="text-3xl font-bold tracking-[-0.025em] gradient-text">Calendar</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="ghost" size="sm" onClick={syncGoogle} loading={syncing}>
+            🔄 Sync Google
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => { setForm(p => ({ ...p, date: format(selectedDay ?? new Date(), "yyyy-MM-dd") })); setModalOpen(true); }}>
             + Add Event
           </Button>
         </div>
+        {syncMsg && <div className={`text-xs mt-1 ${syncMsg.startsWith("✓") ? "text-[#6BE3A4]" : "text-[#FF6B6B]"}`}>{syncMsg}</div>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -183,7 +210,10 @@ export default function CalendarPage() {
                           <div className="font-medium text-sm">{ev.title}</div>
                           {ev.time && <div className="text-xs font-mono text-[#76746E] mt-0.5">{ev.time}</div>}
                           {ev.notes && <p className="text-xs text-[#76746E] mt-1">{ev.notes}</p>}
-                          <Badge variant="default" className="mt-2">{ev.type}</Badge>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge variant="default">{ev.type}</Badge>
+                            {ev.source === "google" && <span className="text-[10px] font-mono text-[#76746E]">Google</span>}
+                          </div>
                         </div>
                         <button onClick={() => deleteEvent(ev.id)} className="text-[#76746E] hover:text-[#FF6B6B] text-lg leading-none transition-colors">×</button>
                       </div>
