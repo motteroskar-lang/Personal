@@ -2,6 +2,8 @@
 // Uses Garmin Health API (OAuth 1.0a)
 // Setup: https://developer.garmin.com/health-api/overview/
 
+import { dbGet } from "./db";
+
 export interface GarminSleepData {
   calendarDate: string;
   durationInSeconds: number;
@@ -47,10 +49,7 @@ export interface GarminDailyData {
 const GARMIN_API_BASE = "https://apis.garmin.com/wellness-api/rest";
 
 export async function getGarminTokens(): Promise<{ token: string; secret: string } | null> {
-  // Tokens are stored in settings after OAuth flow
-  const { getDb } = await import("./db");
-  const db = getDb();
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'garmin_tokens'").get() as { value: string } | undefined;
+  const row = await dbGet<{ value: string }>("SELECT value FROM settings WHERE key = 'garmin_tokens'");
   if (!row) return null;
   try {
     return JSON.parse(row.value);
@@ -118,8 +117,8 @@ function buildOAuthHeader(token: string, secret: string, method: string, url: st
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = Math.random().toString(36).substring(2);
 
-  // In production, implement full OAuth 1.0a signature
-  // This is a placeholder - use a library like oauth-1.0a for production
+  // Placeholder — use oauth-1.0a library for a complete HMAC-SHA1 signature
+  void secret; void method; void url;
   return `OAuth oauth_consumer_key="${consumerKey}", oauth_token="${token}", oauth_timestamp="${timestamp}", oauth_nonce="${nonce}", oauth_signature_method="HMAC-SHA1", oauth_version="1.0"`;
 }
 

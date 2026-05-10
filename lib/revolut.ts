@@ -1,6 +1,8 @@
 // Revolut Open Banking API integration
 // Setup: https://developer.revolut.com/docs/business/business-api
 
+import { dbGet, dbRun } from "./db";
+
 export interface RevolutTransaction {
   id: string;
   created_at: string;
@@ -28,13 +30,10 @@ const REVOLUT_BASE = process.env.REVOLUT_ENVIRONMENT === "sandbox"
   : "https://b2b.revolut.com/api/1.0";
 
 async function getRevolutToken(): Promise<string | null> {
-  const { getDb } = await import("./db");
-  const db = getDb();
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'revolut_token'").get() as { value: string } | undefined;
+  const row = await dbGet<{ value: string }>("SELECT value FROM settings WHERE key = 'revolut_token'");
   if (!row) return null;
   try {
     const tokenData = JSON.parse(row.value);
-    // Refresh if expired
     if (tokenData.expires_at && Date.now() > tokenData.expires_at) {
       return await refreshRevolutToken(tokenData.refresh_token);
     }
@@ -59,10 +58,9 @@ async function refreshRevolutToken(refreshToken: string): Promise<string | null>
     if (!res.ok) return null;
     const data = await res.json();
 
-    const { getDb } = await import("./db");
-    const db = getDb();
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('revolut_token', ?)").run(
-      JSON.stringify({ ...data, expires_at: Date.now() + data.expires_in * 1000 })
+    await dbRun(
+      "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('revolut_token', ?, unixepoch())",
+      [JSON.stringify({ ...data, expires_at: Date.now() + data.expires_in * 1000 })]
     );
     return data.access_token;
   } catch {

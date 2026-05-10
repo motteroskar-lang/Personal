@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { dbAll, dbGet, dbRun, initSchema } from "@/lib/db";
 import { todayStr } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
-  const db = getDb();
+  await initSchema();
   const { searchParams } = new URL(req.url);
   const days = parseInt(searchParams.get("days") ?? "7");
 
-  const rows = db.prepare("SELECT * FROM screen_time ORDER BY date DESC LIMIT ?").all(days);
+  const rows = await dbAll("SELECT * FROM screen_time ORDER BY date DESC LIMIT ?", [days]);
   return NextResponse.json({ data: rows });
 }
 
 export async function POST(req: NextRequest) {
-  const db = getDb();
+  await initSchema();
   const body = await req.json();
   const {
     date, total_minutes, social_media_min, productivity_min,
@@ -20,28 +20,25 @@ export async function POST(req: NextRequest) {
   } = body;
 
   const d = date ?? todayStr();
-  const existing = db.prepare("SELECT id FROM screen_time WHERE date = ?").get(d);
+  const appBreakdownStr = app_breakdown ? JSON.stringify(app_breakdown) : null;
+  const existing = await dbGet<{ id: number }>("SELECT id FROM screen_time WHERE date = ?", [d]);
 
   if (existing) {
-    db.prepare(`
-      UPDATE screen_time SET total_minutes = ?, social_media_min = ?, productivity_min = ?,
-      entertainment_min = ?, health_fitness_min = ?, app_breakdown = ? WHERE date = ?
-    `).run(
-      total_minutes ?? 0, social_media_min ?? 0, productivity_min ?? 0,
-      entertainment_min ?? 0, health_fitness_min ?? 0,
-      app_breakdown ? JSON.stringify(app_breakdown) : null, d
+    await dbRun(
+      `UPDATE screen_time SET total_minutes = ?, social_media_min = ?, productivity_min = ?,
+       entertainment_min = ?, health_fitness_min = ?, app_breakdown = ? WHERE date = ?`,
+      [total_minutes ?? 0, social_media_min ?? 0, productivity_min ?? 0,
+       entertainment_min ?? 0, health_fitness_min ?? 0, appBreakdownStr, d]
     );
   } else {
-    db.prepare(`
-      INSERT INTO screen_time (date, total_minutes, social_media_min, productivity_min, entertainment_min, health_fitness_min, app_breakdown)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      d, total_minutes ?? 0, social_media_min ?? 0, productivity_min ?? 0,
-      entertainment_min ?? 0, health_fitness_min ?? 0,
-      app_breakdown ? JSON.stringify(app_breakdown) : null
+    await dbRun(
+      `INSERT INTO screen_time (date, total_minutes, social_media_min, productivity_min, entertainment_min, health_fitness_min, app_breakdown)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [d, total_minutes ?? 0, social_media_min ?? 0, productivity_min ?? 0,
+       entertainment_min ?? 0, health_fitness_min ?? 0, appBreakdownStr]
     );
   }
 
-  const row = db.prepare("SELECT * FROM screen_time WHERE date = ?").get(d);
+  const row = await dbGet("SELECT * FROM screen_time WHERE date = ?", [d]);
   return NextResponse.json({ data: row });
 }

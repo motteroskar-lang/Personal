@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { dbRun, initSchema } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -11,10 +11,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Exchange for access token (simplified - use oauth-1.0a library in production)
-    const db = getDb();
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('garmin_tokens', ?)").run(
-      JSON.stringify({ token, verifier, connected_at: new Date().toISOString() })
+    await initSchema();
+    await dbRun(
+      "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('garmin_tokens', ?, unixepoch())",
+      [JSON.stringify({ token, verifier, connected_at: new Date().toISOString() })]
     );
 
     return NextResponse.redirect(new URL("/settings?success=garmin_connected", req.url));

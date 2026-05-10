@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { dbRun, initSchema } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -29,9 +29,10 @@ export async function GET(req: NextRequest) {
     if (!res.ok) throw new Error("Token exchange failed");
     const tokenData = await res.json();
 
-    const db = getDb();
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('revolut_token', ?)").run(
-      JSON.stringify({ ...tokenData, expires_at: Date.now() + (tokenData.expires_in ?? 3600) * 1000 })
+    await initSchema();
+    await dbRun(
+      "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('revolut_token', ?, unixepoch())",
+      [JSON.stringify({ ...tokenData, expires_at: Date.now() + (tokenData.expires_in ?? 3600) * 1000 })]
     );
 
     return NextResponse.redirect(new URL("/settings?success=revolut_connected", req.url));

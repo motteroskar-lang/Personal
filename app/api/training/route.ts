@@ -1,111 +1,108 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { dbGet, dbAll, dbRun, initSchema } from "@/lib/db";
 import { todayStr } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
-  const db = getDb();
+  await initSchema();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   const days = parseInt(searchParams.get("days") ?? "30");
   const exercise = searchParams.get("exercise");
 
   if (id) {
-    const workout = db.prepare("SELECT * FROM workouts WHERE id = ?").get(id);
-    const exercises = db.prepare("SELECT * FROM exercises WHERE workout_id = ? ORDER BY id ASC").all(id);
+    const workout = await dbGet("SELECT * FROM workouts WHERE id = ?", [id]);
+    const exercises = await dbAll("SELECT * FROM exercises WHERE workout_id = ? ORDER BY id ASC", [id]);
     return NextResponse.json({ workout, exercises });
   }
 
   if (exercise) {
-    const history = db.prepare(`
-      SELECT e.*, w.date, w.name as workout_name FROM exercises e
-      JOIN workouts w ON e.workout_id = w.id
-      WHERE e.name = ? ORDER BY w.date DESC LIMIT 20
-    `).all(exercise);
-    const pr = db.prepare("SELECT * FROM personal_records WHERE exercise_name = ? ORDER BY value DESC LIMIT 1").get(exercise);
+    const history = await dbAll(
+      `SELECT e.*, w.date, w.name as workout_name FROM exercises e
+       JOIN workouts w ON e.workout_id = w.id
+       WHERE e.name = ? ORDER BY w.date DESC LIMIT 20`,
+      [exercise]
+    );
+    const pr = await dbGet("SELECT * FROM personal_records WHERE exercise_name = ? ORDER BY value DESC LIMIT 1", [exercise]);
     return NextResponse.json({ history, pr });
   }
 
-  const workouts = db.prepare(
-    "SELECT * FROM workouts ORDER BY date DESC LIMIT ?"
-  ).all(days);
-
-  const prs = db.prepare("SELECT * FROM personal_records ORDER BY date DESC").all();
-
+  const workouts = await dbAll("SELECT * FROM workouts ORDER BY date DESC LIMIT ?", [days]);
+  const prs = await dbAll("SELECT * FROM personal_records ORDER BY date DESC");
   return NextResponse.json({ workouts, prs });
 }
 
 export async function POST(req: NextRequest) {
-  const db = getDb();
+  await initSchema();
   const body = await req.json();
   const { type } = body;
 
   if (type === "exercise") {
     const { workout_id, name, sets, reps, weight, weight_unit, rpe, notes } = body;
-    const result = db.prepare(
-      "INSERT INTO exercises (workout_id, name, sets, reps, weight, weight_unit, rpe, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    ).run(workout_id, name, sets, reps, weight ?? null, weight_unit ?? "kg", rpe ?? null, notes ?? null);
+    const r = await dbRun(
+      "INSERT INTO exercises (workout_id, name, sets, reps, weight, weight_unit, rpe, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [workout_id, name, sets, reps, weight ?? null, weight_unit ?? "kg", rpe ?? null, notes ?? null]
+    );
 
-    // Check for PR
     if (weight) {
-      const existingPR = db.prepare(
-        "SELECT * FROM personal_records WHERE exercise_name = ? ORDER BY value DESC LIMIT 1"
-      ).get(name) as { value: number } | undefined;
-
+      const existingPR = await dbGet<{ value: number }>(
+        "SELECT * FROM personal_records WHERE exercise_name = ? ORDER BY value DESC LIMIT 1",
+        [name]
+      );
       if (!existingPR || weight > existingPR.value) {
-        db.prepare(
-          "INSERT INTO personal_records (exercise_name, value, unit, date, exercise_id) VALUES (?, ?, ?, ?, ?)"
-        ).run(name, weight, weight_unit ?? "kg", todayStr(), result.lastInsertRowid);
+        await dbRun(
+          "INSERT INTO personal_records (exercise_name, value, unit, date, exercise_id) VALUES (?, ?, ?, ?, ?)",
+          [name, weight, weight_unit ?? "kg", todayStr(), r.lastInsertRowid]
+        );
       }
     }
 
-    const exercise = db.prepare("SELECT * FROM exercises WHERE id = ?").get(result.lastInsertRowid);
-    return NextResponse.json({ exercise, isPR: true });
+    const exercise = await dbGet("SELECT * FROM exercises WHERE id = ?", [r.lastInsertRowid]);
+    return NextResponse.json({ exercise });
   }
 
-  // Create workout
   const { date, name, workout_type, duration_min, notes, exercises } = body;
-  const result = db.prepare(
-    "INSERT INTO workouts (date, name, type, duration_min, notes) VALUES (?, ?, ?, ?, ?)"
-  ).run(date ?? todayStr(), name, workout_type ?? "strength", duration_min ?? null, notes ?? null);
-
-  const workoutId = result.lastInsertRowid;
+  const r = await dbRun(
+    "INSERT INTO workouts (date, name, type, duration_min, notes) VALUES (?, ?, ?, ?, ?)",
+    [date ?? todayStr(), name, workout_type ?? "strength", duration_min ?? null, notes ?? null]
+  );
+  const workoutId = r.lastInsertRowid;
 
   if (exercises?.length) {
-    const insertExercise = db.prepare(
-      "INSERT INTO exercises (workout_id, name, sets, reps, weight, weight_unit, rpe, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    );
-
     for (const ex of exercises) {
-      const exResult = insertExercise.run(workoutId, ex.name, ex.sets, ex.reps, ex.weight ?? null, ex.weight_unit ?? "kg", ex.rpe ?? null, ex.notes ?? null);
+      const exR = await dbRun(
+        "INSERT INTO exercises (workout_id, name, sets, reps, weight, weight_unit, rpe, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [workoutId, ex.name, ex.sets, ex.reps, ex.weight ?? null, ex.weight_unit ?? "kg", ex.rpe ?? null, ex.notes ?? null]
+      );
 
       if (ex.weight) {
-        const existingPR = db.prepare(
-          "SELECT * FROM personal_records WHERE exercise_name = ? ORDER BY value DESC LIMIT 1"
-        ).get(ex.name) as { value: number } | undefined;
-
+        const existingPR = await dbGet<{ value: number }>(
+          "SELECT * FROM personal_records WHERE exercise_name = ? ORDER BY value DESC LIMIT 1",
+          [ex.name]
+        );
         if (!existingPR || ex.weight > existingPR.value) {
-          db.prepare(
-            "INSERT INTO personal_records (exercise_name, value, unit, date, exercise_id) VALUES (?, ?, ?, ?, ?)"
-          ).run(ex.name, ex.weight, ex.weight_unit ?? "kg", date ?? todayStr(), exResult.lastInsertRowid);
+          await dbRun(
+            "INSERT INTO personal_records (exercise_name, value, unit, date, exercise_id) VALUES (?, ?, ?, ?, ?)",
+            [ex.name, ex.weight, ex.weight_unit ?? "kg", date ?? todayStr(), exR.lastInsertRowid]
+          );
         }
       }
     }
   }
 
-  const workout = db.prepare("SELECT * FROM workouts WHERE id = ?").get(workoutId);
+  const workout = await dbGet("SELECT * FROM workouts WHERE id = ?", [workoutId]);
   return NextResponse.json({ workout });
 }
 
 export async function DELETE(req: NextRequest) {
-  const db = getDb();
+  await initSchema();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   const type = searchParams.get("type") ?? "workout";
 
   if (type === "exercise") {
-    db.prepare("DELETE FROM exercises WHERE id = ?").run(id);
+    await dbRun("DELETE FROM exercises WHERE id = ?", [id]);
   } else {
-    db.prepare("DELETE FROM workouts WHERE id = ?").run(id);
+    await dbRun("DELETE FROM workouts WHERE id = ?", [id]);
   }
   return NextResponse.json({ ok: true });
 }

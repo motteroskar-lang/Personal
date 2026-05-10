@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { dbGet, dbRun, initSchema } from "@/lib/db";
 import { fetchGarminSleep, fetchGarminHRV, fetchGarminDaily } from "@/lib/garmin";
 import { todayStr } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
+  await initSchema();
   const body = await req.json().catch(() => ({}));
   const date = body.date ?? todayStr();
 
@@ -18,7 +19,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No Garmin data available. Connect your Garmin account in Settings." }, { status: 404 });
     }
 
-    const db = getDb();
     const upsertData = {
       date,
       sleep_start: sleep?.startTimeLocal ?? null,
@@ -43,18 +43,24 @@ export async function POST(req: NextRequest) {
       source: "garmin",
     };
 
-    const existing = db.prepare("SELECT id FROM health_data WHERE date = ?").get(date);
+    const existing = await dbGet<{ id: number }>("SELECT id FROM health_data WHERE date = ?", [date]);
+
     if (existing) {
-      const sets = Object.keys(upsertData).filter(k => k !== "date").map(k => `${k} = ?`);
-      const vals = Object.keys(upsertData).filter(k => k !== "date").map(k => upsertData[k as keyof typeof upsertData]);
-      db.prepare(`UPDATE health_data SET ${sets.join(", ")} WHERE date = ?`).run(...vals, date);
+      const keys = Object.keys(upsertData).filter(k => k !== "date");
+      const vals = keys.map(k => upsertData[k as keyof typeof upsertData]);
+      const sets = keys.map(k => `${k} = ?`).join(", ");
+      await dbRun(`UPDATE health_data SET ${sets} WHERE date = ?`, [...vals, date]);
     } else {
       const keys = Object.keys(upsertData);
       const vals = Object.values(upsertData);
-      db.prepare(`INSERT INTO health_data (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`).run(...vals);
+      const placeholders = keys.map(() => "?").join(", ");
+      await dbRun(
+        `INSERT INTO health_data (${keys.join(", ")}) VALUES (${placeholders})`,
+        vals
+      );
     }
 
-    const row = db.prepare("SELECT * FROM health_data WHERE date = ?").get(date);
+    const row = await dbGet("SELECT * FROM health_data WHERE date = ?", [date]);
     return NextResponse.json({ data: row, synced: true });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
