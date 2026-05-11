@@ -7,21 +7,34 @@ import { dbGet, dbRun } from "./db";
 
 const UA = "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 const CONNECT = "https://connect.garmin.com";
+const SSO_HOST = "https://sso.garmin.com";
 
 const SSO_PARAMS = new URLSearchParams({
-  id: "gauth-widget",
-  embedWidget: "true",
-  gauthHost: "https://sso.garmin.com/sso",
   service: `${CONNECT}/modern/`,
+  webhost: CONNECT,
   source: `${CONNECT}/signin/`,
   redirectAfterAccountLoginUrl: `${CONNECT}/modern/`,
+  gauthHost: "https://sso.garmin.com/sso",
+  locale: "en_US",
+  id: "gauth-widget",
   clientId: "GarminConnect",
   rememberMeShown: "true",
+  rememberMeChecked: "false",
   createAccountShown: "true",
+  openCreateAccount: "false",
+  consumeServiceTicket: "false",
+  embedWidget: "false",
   generateExtraServiceTicket: "true",
+  generateNoServiceTicket: "false",
+  globalOptInShown: "true",
+  globalOptInChecked: "false",
+  mobile: "false",
+  connectLegalTerms: "true",
+  locationPromptShown: "true",
+  showPassword: "true",
 }).toString();
 
-const SSO_URL = `https://sso.garmin.com/sso/embed?${SSO_PARAMS}`;
+const SSO_URL = `https://sso.garmin.com/sso/signin?${SSO_PARAMS}`;
 
 // ── Low-level HTTPS request that exposes redirect Location + Set-Cookie ──────
 
@@ -33,12 +46,19 @@ async function rawRequest(
 ): Promise<RawResponse> {
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
+    const defaultHeaders: Record<string, string> = {
+      "User-Agent": UA,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Encoding": "identity",
+      "Connection": "keep-alive",
+    };
     const reqOpts: https.RequestOptions = {
       hostname: u.hostname,
       port: u.port ? parseInt(u.port) : 443,
       path: u.pathname + u.search,
       method: opts.method ?? "GET",
-      headers: { "User-Agent": UA, ...opts.headers },
+      headers: { ...defaultHeaders, ...opts.headers },
     };
 
     const req = https.request(reqOpts, (res) => {
@@ -144,8 +164,9 @@ export async function garminConnectLogin(
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       "Content-Length": String(Buffer.byteLength(formBody)),
-      Referer: SSO_URL,
-      Cookie: cookieHeader(jar),
+      "Origin": SSO_HOST,
+      "Referer": SSO_URL,
+      "Cookie": cookieHeader(jar),
     },
     body: formBody,
   });
@@ -159,7 +180,8 @@ export async function garminConnectLogin(
       return { error: "Falsche Email oder falsches Passwort." };
     if (body.includes("mfa") || body.includes("two-factor") || body.includes("verification"))
       return { error: "Dein Garmin-Konto hat 2-Faktor-Auth (2FA) aktiviert. Bitte deaktiviere sie kurz in der Garmin Connect App → Profil → Einstellungen → Sicherheit, verbinde dich, dann reaktiviere sie." };
-    return { error: `Login fehlgeschlagen (Status ${login.status}). Prüfe Email und Passwort.` };
+    const preview = login.body.slice(0, 100).replace(/\s+/g, " ").trim();
+    return { error: `Login fehlgeschlagen (Status ${login.status}): ${preview || "Keine Antwort"}` };
   }
 
   const ticket = location.match(/ticket=(ST-[^\s&"]+)/)?.[1];
