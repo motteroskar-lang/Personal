@@ -9,19 +9,31 @@ const UA = "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML,
 const CONNECT = "https://connect.garmin.com";
 
 const SSO_PARAMS = new URLSearchParams({
-  id: "gauth-widget",
-  embedWidget: "true",
-  gauthHost: "https://sso.garmin.com/sso",
   service: `${CONNECT}/modern/`,
+  webhost: CONNECT,
   source: `${CONNECT}/signin/`,
   redirectAfterAccountLoginUrl: `${CONNECT}/modern/`,
+  gauthHost: "https://sso.garmin.com/sso",
+  locale: "en_US",
+  id: "gauth-widget",
   clientId: "GarminConnect",
   rememberMeShown: "true",
+  rememberMeChecked: "false",
   createAccountShown: "true",
+  openCreateAccount: "false",
+  consumeServiceTicket: "false",
+  embedWidget: "false",
   generateExtraServiceTicket: "true",
+  generateNoServiceTicket: "false",
+  globalOptInShown: "true",
+  globalOptInChecked: "false",
+  mobile: "false",
+  connectLegalTerms: "true",
+  locationPromptShown: "true",
+  showPassword: "true",
 }).toString();
 
-const SSO_URL = `https://sso.garmin.com/sso/embed?${SSO_PARAMS}`;
+const SSO_URL = `https://sso.garmin.com/sso/signin?${SSO_PARAMS}`;
 
 // ── Low-level HTTPS request that exposes redirect Location + Set-Cookie ──────
 
