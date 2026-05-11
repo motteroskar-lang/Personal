@@ -9,6 +9,19 @@ import { Badge } from "@/components/ui/Badge";
 
 interface Integrations { garmin: boolean; revolut: boolean; google: boolean }
 
+const SHORTCUT_STEPS = [
+  { n: "1", title: "Shortcuts-App öffnen", desc: 'Tippe unten auf "+" → "Aktion hinzufügen"' },
+  { n: "2", title: "Datum von gestern", desc: '"Datum anpassen" → Aktuelle Zeit → Subtrahieren → 1 Tag → Variable "gestern" speichern\n"Datum formatieren" → gestern → Format: yyyy-MM-dd → Variable "datum"' },
+  { n: "3", title: "HRV holen", desc: '"Health-Stichproben abrufen" → Typ: Herzfrequenzvariabilität (SDNN) → Aggregat: Durchschnitt → Letzte 1 Tag → Variable "hrv"' },
+  { n: "4", title: "Ruhepuls holen", desc: '"Health-Stichproben abrufen" → Typ: Ruheherzfrequenz → Aggregat: Letzte Stichprobe → Variable "rhr"' },
+  { n: "5", title: "Schritte holen", desc: '"Health-Stichproben abrufen" → Typ: Schrittanzahl → Aggregat: Summe → Letzte 1 Tag → Variable "schritte"' },
+  { n: "6", title: "Aktive Kalorien holen", desc: '"Health-Stichproben abrufen" → Typ: Aktiver Energieverbrauch → Aggregat: Summe → Letzte 1 Tag → Variable "kalorien"' },
+  { n: "7", title: "Atemfrequenz holen", desc: '"Health-Stichproben abrufen" → Typ: Atemfrequenz → Aggregat: Durchschnitt → Letzte 1 Tag → Variable "atem"' },
+  { n: "8", title: "Wörterbuch erstellen", desc: 'Aktion "Wörterbuch" mit diesen Schlüssel-Wert-Paaren:\ndate → Variable "datum"\nhrv_avg → Variable "hrv"\nresting_hr → Variable "rhr"\nsteps → Variable "schritte"\nactive_calories → Variable "kalorien"\nrespiratory_rate → Variable "atem"\nsource → Text: apple_health' },
+  { n: "9", title: "An App senden", desc: '"Inhalt von URL abrufen" → URL: [Import-URL unten kopieren]\nMethode: POST → Header: Content-Type = application/json\nAnfrage-Text: JSON → Wörterbuch aus Schritt 8' },
+  { n: "10", title: "Automatisierung einrichten", desc: 'Shortcuts → Automatisierung → Neue persönliche Automation → Tageszeit 08:00 → Täglich\nAktion: "Verknüpfung ausführen" → Diese Verknüpfung\n"Vor Ausführen fragen" deaktivieren → Fertig' },
+];
+
 function SettingsContent() {
   const searchParams = useSearchParams();
   const [integrations, setIntegrations] = useState<Integrations>({ garmin: false, revolut: false, google: false });
@@ -28,6 +41,9 @@ function SettingsContent() {
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [shortcutOpen, setShortcutOpen] = useState(false);
 
   const successMsg = searchParams.get("success");
   const errorMsg = searchParams.get("error");
@@ -38,7 +54,14 @@ function SettingsContent() {
       if (data.settings?.wake_time) setWakeTime(data.settings.wake_time as string);
       if (data.settings?.sleep_time) setSleepTime(data.settings.sleep_time as string);
     });
+    setImportUrl(`${window.location.origin}/api/health/import`);
   }, []);
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(importUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const saveSettings = async () => {
     setSaving(true);
@@ -221,6 +244,70 @@ function SettingsContent() {
               🔗 Mit Garmin verbinden
             </Button>
           </div>
+        </Card>
+      </div>
+
+      {/* Apple Health Sync */}
+      <div>
+        <SectionTitle>Apple Health Sync (iPad / iPhone)</SectionTitle>
+        <Card>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-2xl">🍎</span>
+            <div>
+              <div className="font-semibold">Apple Health → Automatischer Sync</div>
+              <p className="text-xs text-[#76746E] mt-0.5">
+                Garmin Connect → Apple Health → iOS Shortcut → Diese App. Täglich automatisch um 08:00 Uhr.
+              </p>
+            </div>
+          </div>
+
+          {/* Import URL */}
+          <div className="mb-4">
+            <div className="text-[10px] font-mono uppercase tracking-[0.1em] text-[#76746E] mb-1.5">Import-URL (in den Shortcut kopieren)</div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] font-mono text-xs text-[#B8B6B0] truncate">
+                {importUrl}
+              </div>
+              <Button variant="secondary" size="sm" onClick={copyUrl}>
+                {copied ? "✓ Kopiert!" : "Kopieren"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Prerequisite */}
+          <div className="p-3 rounded-xl bg-[#6BE3A4]/5 border border-[#6BE3A4]/15 text-xs text-[#76746E] mb-4">
+            <p className="text-[#6BE3A4] font-semibold mb-1">Voraussetzung (einmalig):</p>
+            <p>Garmin Connect App auf iPad → Profil → Einstellungen → Integrationen → Apple Health → <strong className="text-[#B8B6B0]">Alle Kategorien aktivieren</strong></p>
+          </div>
+
+          {/* Shortcut Steps Toggle */}
+          <button
+            onClick={() => setShortcutOpen(p => !p)}
+            className="flex items-center gap-2 text-sm font-medium text-[#60A5FA] hover:text-[#93C5FD] transition-colors mb-2"
+          >
+            <span>{shortcutOpen ? "▼" : "▶"}</span>
+            Shortcut Schritt für Schritt einrichten
+          </button>
+
+          {shortcutOpen && (
+            <div className="space-y-3 mt-2">
+              {SHORTCUT_STEPS.map(step => (
+                <div key={step.n} className="flex gap-3">
+                  <div className="w-6 h-6 rounded-full bg-[#60A5FA]/20 border border-[#60A5FA]/30 flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-[#60A5FA]">
+                    {step.n}
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-[#FAFAFA] mb-0.5">{step.title}</div>
+                    <div className="text-[11px] text-[#76746E] whitespace-pre-line">{step.desc}</div>
+                  </div>
+                </div>
+              ))}
+              <div className="p-3 rounded-xl bg-[#F2C063]/5 border border-[#F2C063]/15 text-xs text-[#76746E] mt-3">
+                <p className="text-[#F2C063] font-semibold mb-1">💡 Tipp:</p>
+                <p>Nachdem der Shortcut läuft, siehst du auf der Health-Seite alle Daten von gestern. Schlaf musst du beim ersten Mal manuell einloggen — Apple Health Schlaf-Sync ist komplexer und wird separat eingerichtet.</p>
+              </div>
+            </div>
+          )}
         </Card>
       </div>
 
