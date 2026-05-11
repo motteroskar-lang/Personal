@@ -59,6 +59,7 @@ export default function GoalsPage() {
   const [newTask, setNewTask] = useState("");
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // New goal form
   const [form, setForm] = useState({
@@ -87,21 +88,20 @@ export default function GoalsPage() {
 
   const saveGoal = async (e: React.FormEvent) => {
     e.preventDefault();
+    setApiError(null);
     const method = editGoal ? "PATCH" : "POST";
     const body = editGoal
       ? { id: editGoal.id, ...form, target_value: form.target_value ? parseFloat(form.target_value) : undefined }
       : { ...form, target_value: form.target_value ? parseFloat(form.target_value) : undefined };
-
-    await fetch("/api/goals", {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    setModalOpen(false);
-    setEditGoal(null);
-    setForm({ title: "", description: "", category: "fitness", urgency: "medium", target_value: "", unit: "", deadline: "" });
-    await load();
+    try {
+      const res = await fetch("/api/goals", { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setModalOpen(false);
+      setEditGoal(null);
+      setForm({ title: "", description: "", category: "fitness", urgency: "medium", target_value: "", unit: "", deadline: "" });
+      await load();
+    } catch (err) { setApiError(String(err).replace("Error: ", "")); }
   };
 
   const deleteGoal = async (id: number) => {
@@ -146,14 +146,13 @@ export default function GoalsPage() {
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTask.trim()) return;
-    const res = await fetch("/api/goals", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "daily", date: today, text: newTask.trim() }),
-    });
-    const data = await res.json();
-    setTasks(prev => [...prev, data.task]);
-    setNewTask("");
+    try {
+      const res = await fetch("/api/goals", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "daily", date: today, text: newTask.trim() }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setTasks(prev => [...prev, data.task]);
+      setNewTask("");
+    } catch (err) { setApiError(String(err).replace("Error: ", "")); }
   };
 
   const generatePlan = async () => {
@@ -375,6 +374,7 @@ export default function GoalsPage() {
 
       {/* Add/Edit Goal Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editGoal ? "Edit Goal" : "Add New Goal"}>
+        {apiError && <div className="px-3 py-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B] text-xs mb-2">{apiError}</div>}
         <form onSubmit={saveGoal} className="space-y-4">
           <Input label="Goal Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Bench press 100kg" required />
           <Textarea label="Description (optional)" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Why this goal matters…" rows={2} />

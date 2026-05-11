@@ -24,6 +24,7 @@ export default function JournalPage() {
   const [entry, setEntry] = useState<JournalEntry | null>(null);
   const [history, setHistory] = useState<JournalEntry[]>([]);
   const [saving, setSaving] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(today);
   const [form, setForm] = useState({
     content: "", mood: "7", energy: "7",
@@ -60,8 +61,9 @@ export default function JournalPage() {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setApiError(null);
     try {
-      await fetch("/api/journal", {
+      const res = await fetch("/api/journal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -74,10 +76,11 @@ export default function JournalPage() {
           challenges: form.challenges || null,
         }),
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
       await load();
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { setApiError(String(err).replace("Error: ", "")); }
+    finally { setSaving(false); }
   };
 
   const moodScale = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -152,6 +155,7 @@ export default function JournalPage() {
               </div>
             </Card>
 
+            {apiError && <div className="px-3 py-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B] text-xs">{apiError}</div>}
             <Button variant="primary" type="submit" loading={saving} className="w-full">
               {saving ? "Saving & Generating AI Insight…" : "Save Entry"}
             </Button>

@@ -67,6 +67,9 @@ export default function FinancePage() {
   const [importAccount, setImportAccount] = useState("revolut");
   const [form, setForm] = useState({ date: todayStr(), description: "", amount: "", currency: "EUR", category: "food", account: "revolut", txtype: "expense" });
   const [goalForm, setGoalForm] = useState({ name: "", target: "", currency: "EUR", deadline: "", category: "savings" });
+  const [txError, setTxError] = useState<string | null>(null);
+  const [goalError, setGoalError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [sumRes, goalRes] = await Promise.all([
@@ -83,39 +86,52 @@ export default function FinancePage() {
 
   const addTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("/api/finance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
-    });
-    setModalOpen(false);
-    setForm({ date: todayStr(), description: "", amount: "", currency: "EUR", category: "food", account: "revolut", txtype: "expense" });
-    await load();
+    setTxError(null);
+    try {
+      const res = await fetch("/api/finance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setModalOpen(false);
+      setForm({ date: todayStr(), description: "", amount: "", currency: "EUR", category: "food", account: "revolut", txtype: "expense" });
+      await load();
+    } catch (err) { setTxError(String(err).replace("Error: ", "")); }
   };
 
   const addGoal = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("/api/finance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "financial_goal", ...goalForm, target: parseFloat(goalForm.target) }),
-    });
-    setGoalModalOpen(false);
-    await load();
+    setGoalError(null);
+    try {
+      const res = await fetch("/api/finance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "financial_goal", ...goalForm, target: parseFloat(goalForm.target) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setGoalModalOpen(false);
+      await load();
+    } catch (err) { setGoalError(String(err).replace("Error: ", "")); }
   };
 
   const importCSV = async () => {
     if (!csvText.trim()) return;
-    const res = await fetch("/api/finance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "import_csv", csv: csvText, account: importAccount }),
-    });
-    const data = await res.json();
-    alert(`Imported ${data.imported} transactions`);
-    setImportModalOpen(false);
-    setCsvText("");
-    await load();
+    setImportError(null);
+    try {
+      const res = await fetch("/api/finance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "import_csv", csv: csvText, account: importAccount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setImportModalOpen(false);
+      setCsvText("");
+      await load();
+    } catch (err) { setImportError(String(err).replace("Error: ", "")); }
   };
 
   const deleteTransaction = async (id: number) => {
@@ -262,8 +278,9 @@ export default function FinancePage() {
       </div>
 
       {/* Add Transaction Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Transaction">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setTxError(null); }} title="Add Transaction">
         <form onSubmit={addTransaction} className="space-y-4">
+          {txError && <div className="px-3 py-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B] text-xs">{txError}</div>}
           <div className="grid grid-cols-2 gap-3">
             <Input label="Date" type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} required />
             <Select label="Type" value={form.txtype} onChange={e => setForm(p => ({ ...p, txtype: e.target.value }))}
@@ -287,8 +304,9 @@ export default function FinancePage() {
       </Modal>
 
       {/* Add Goal Modal */}
-      <Modal open={goalModalOpen} onClose={() => setGoalModalOpen(false)} title="Add Financial Goal">
+      <Modal open={goalModalOpen} onClose={() => { setGoalModalOpen(false); setGoalError(null); }} title="Add Financial Goal">
         <form onSubmit={addGoal} className="space-y-4">
+          {goalError && <div className="px-3 py-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B] text-xs">{goalError}</div>}
           <Input label="Goal Name" value={goalForm.name} onChange={e => setGoalForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Emergency Fund" required />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Target Amount" type="number" step="0.01" value={goalForm.target} onChange={e => setGoalForm(p => ({ ...p, target: e.target.value }))} required />
@@ -304,8 +322,9 @@ export default function FinancePage() {
       </Modal>
 
       {/* CSV Import Modal */}
-      <Modal open={importModalOpen} onClose={() => setImportModalOpen(false)} title="Import CSV">
+      <Modal open={importModalOpen} onClose={() => { setImportModalOpen(false); setImportError(null); }} title="Import CSV">
         <div className="space-y-4">
+          {importError && <div className="px-3 py-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B] text-xs">{importError}</div>}
           <Select label="Account" value={importAccount} onChange={e => setImportAccount(e.target.value)} options={ACCOUNT_OPTS} />
           <Textarea label="Paste CSV data (Revolut export format)" value={csvText} onChange={e => setCsvText(e.target.value)} rows={6} placeholder="Date,Description,Amount,Currency..." />
           <p className="text-xs text-[#76746E]">Export from Revolut: Profile → Statements → CSV. For Scalable Capital, export transaction history as CSV.</p>

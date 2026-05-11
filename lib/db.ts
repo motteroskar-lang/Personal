@@ -191,6 +191,8 @@ export async function initSchema(): Promise<void> {
         notes TEXT,
         recurring TEXT,
         goal_id INTEGER,
+        source TEXT DEFAULT 'manual',
+        google_event_id TEXT,
         created_at INTEGER DEFAULT (unixepoch())
       )`,
       `CREATE TABLE IF NOT EXISTS finance_transactions (
@@ -251,4 +253,12 @@ export async function initSchema(): Promise<void> {
     ].map((sql) => ({ sql, args: [] as InArgs })),
     "write"
   );
+
+  // Column migrations for existing databases (ignore "duplicate column" errors)
+  for (const sql of [
+    "ALTER TABLE calendar_events ADD COLUMN source TEXT DEFAULT 'manual'",
+    "ALTER TABLE calendar_events ADD COLUMN google_event_id TEXT",
+  ]) {
+    try { await db.execute({ sql, args: [] }); } catch { /* already exists */ }
+  }
 }

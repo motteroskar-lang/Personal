@@ -19,10 +19,11 @@ export async function GET() {
     }
   }
 
-  const garminConnected = !!(await dbGet("SELECT 1 FROM settings WHERE key = 'garmin_tokens'"));
+  const garminConnected = !!(await dbGet("SELECT 1 FROM settings WHERE key = 'garmin_connect_session'"));
   const revoltConnected = !!(await dbGet("SELECT 1 FROM settings WHERE key = 'revolut_token'"));
+  const googleConnected = !!(await dbGet("SELECT 1 FROM settings WHERE key = 'google_tokens'"));
 
-  return NextResponse.json({ settings, integrations: { garmin: garminConnected, revolut: revoltConnected } });
+  return NextResponse.json({ settings, integrations: { garmin: garminConnected, revolut: revoltConnected, google: googleConnected } });
 }
 
 export async function POST(req: NextRequest) {
