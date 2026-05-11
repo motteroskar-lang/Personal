@@ -44,6 +44,7 @@ export default function CalendarPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
+  const [apiError, setApiError] = useState<string | null>(null);
   const [form, setForm] = useState({ title: "", date: format(new Date(), "yyyy-MM-dd"), time: "", type: "workout", notes: "" });
 
   const monthStr = format(currentMonth, "yyyy-MM");
@@ -90,14 +91,19 @@ export default function CalendarPage() {
 
   const addEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("/api/calendar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    setModalOpen(false);
-    setForm({ title: "", date: format(new Date(), "yyyy-MM-dd"), time: "", type: "workout", notes: "" });
-    await load();
+    setApiError(null);
+    try {
+      const res = await fetch("/api/calendar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setModalOpen(false);
+      setForm({ title: "", date: format(new Date(), "yyyy-MM-dd"), time: "", type: "workout", notes: "" });
+      await load();
+    } catch (err) { setApiError(String(err).replace("Error: ", "")); }
   };
 
   const deleteEvent = async (id: number) => {
@@ -243,8 +249,9 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add Event">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setApiError(null); }} title="Add Event">
         <form onSubmit={addEvent} className="space-y-4">
+          {apiError && <div className="px-3 py-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B] text-xs">{apiError}</div>}
           <Input label="Title" value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. Leg Day" required />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Date" type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} required />

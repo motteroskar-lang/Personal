@@ -48,6 +48,7 @@ export default function HealthPage() {
   const [todayData, setTodayData] = useState<HealthEntry | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [form, setForm] = useState({
     date: today,
     sleep_duration_h: "", sleep_score: "", deep_sleep_min: "", light_sleep_min: "", rem_sleep_min: "",
@@ -86,29 +87,34 @@ export default function HealthPage() {
 
   const saveEntry = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: Record<string, number | string> = { date: form.date };
-    if (form.sleep_duration_h) payload.sleep_duration_min = Math.round(parseFloat(form.sleep_duration_h) * 60);
-    if (form.sleep_score) payload.sleep_score = parseInt(form.sleep_score);
-    if (form.deep_sleep_min) payload.deep_sleep_min = parseInt(form.deep_sleep_min);
-    if (form.light_sleep_min) payload.light_sleep_min = parseInt(form.light_sleep_min);
-    if (form.rem_sleep_min) payload.rem_sleep_min = parseInt(form.rem_sleep_min);
-    if (form.hrv_avg) payload.hrv_avg = parseFloat(form.hrv_avg);
-    if (form.resting_hr) payload.resting_hr = parseInt(form.resting_hr);
-    if (form.respiratory_rate) payload.respiratory_rate = parseFloat(form.respiratory_rate);
-    if (form.body_battery_start) payload.body_battery_start = parseInt(form.body_battery_start);
-    if (form.stress_avg) payload.stress_avg = parseInt(form.stress_avg);
-    if (form.steps) payload.steps = parseInt(form.steps);
-    if (form.active_calories) payload.active_calories = parseInt(form.active_calories);
-    if (form.spo2_avg) payload.spo2_avg = parseFloat(form.spo2_avg);
-    payload.source = "manual";
+    setApiError(null);
+    try {
+      const payload: Record<string, number | string> = { date: form.date };
+      if (form.sleep_duration_h) payload.sleep_duration_min = Math.round(parseFloat(form.sleep_duration_h) * 60);
+      if (form.sleep_score) payload.sleep_score = parseInt(form.sleep_score);
+      if (form.deep_sleep_min) payload.deep_sleep_min = parseInt(form.deep_sleep_min);
+      if (form.light_sleep_min) payload.light_sleep_min = parseInt(form.light_sleep_min);
+      if (form.rem_sleep_min) payload.rem_sleep_min = parseInt(form.rem_sleep_min);
+      if (form.hrv_avg) payload.hrv_avg = parseFloat(form.hrv_avg);
+      if (form.resting_hr) payload.resting_hr = parseInt(form.resting_hr);
+      if (form.respiratory_rate) payload.respiratory_rate = parseFloat(form.respiratory_rate);
+      if (form.body_battery_start) payload.body_battery_start = parseInt(form.body_battery_start);
+      if (form.stress_avg) payload.stress_avg = parseInt(form.stress_avg);
+      if (form.steps) payload.steps = parseInt(form.steps);
+      if (form.active_calories) payload.active_calories = parseInt(form.active_calories);
+      if (form.spo2_avg) payload.spo2_avg = parseFloat(form.spo2_avg);
+      payload.source = "manual";
 
-    await fetch("/api/health", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    setModalOpen(false);
-    await load();
+      const res = await fetch("/api/health", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setModalOpen(false);
+      await load();
+    } catch (err) { setApiError(String(err).replace("Error: ", "")); }
   };
 
   const prefillForm = () => {
@@ -315,8 +321,9 @@ export default function HealthPage() {
       )}
 
       {/* Manual log modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Log Health Data">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setApiError(null); }} title="Log Health Data">
         <form onSubmit={saveEntry} className="space-y-4">
+          {apiError && <div className="px-3 py-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B] text-xs">{apiError}</div>}
           <Input label="Date" type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Sleep Duration (h)" type="number" step="0.1" value={form.sleep_duration_h} onChange={e => setForm(p => ({ ...p, sleep_duration_h: e.target.value }))} placeholder="7.5" />

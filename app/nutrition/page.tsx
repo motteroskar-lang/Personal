@@ -55,6 +55,7 @@ export default function NutritionPage() {
   const [goalsModalOpen, setGoalsModalOpen] = useState(false);
   const [goalsForm, setGoalsForm] = useState({ calories: "2500", protein: "180", carbs: "250", fat: "80" });
   const [form, setForm] = useState({ meal_type: "lunch", food_name: "", amount: "", unit: "g", calories: "", protein: "", carbs: "", fat: "" });
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/nutrition?date=${date}`);
@@ -68,14 +69,19 @@ export default function NutritionPage() {
 
   const addEntry = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("/api/nutrition", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, ...form, calories: parseFloat(form.calories) || 0, protein: parseFloat(form.protein) || 0, carbs: parseFloat(form.carbs) || 0, fat: parseFloat(form.fat) || 0, amount: form.amount ? parseFloat(form.amount) : undefined }),
-    });
-    setModalOpen(false);
-    setForm({ meal_type: "lunch", food_name: "", amount: "", unit: "g", calories: "", protein: "", carbs: "", fat: "" });
-    await load();
+    setApiError(null);
+    try {
+      const res = await fetch("/api/nutrition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, ...form, calories: parseFloat(form.calories) || 0, protein: parseFloat(form.protein) || 0, carbs: parseFloat(form.carbs) || 0, fat: parseFloat(form.fat) || 0, amount: form.amount ? parseFloat(form.amount) : undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setModalOpen(false);
+      setForm({ meal_type: "lunch", food_name: "", amount: "", unit: "g", calories: "", protein: "", carbs: "", fat: "" });
+      await load();
+    } catch (err) { setApiError(String(err).replace("Error: ", "")); }
   };
 
   const deleteEntry = async (id: number) => {

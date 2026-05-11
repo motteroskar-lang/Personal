@@ -32,6 +32,7 @@ export default function TrainingPage() {
   const [exerciseHistory, setExerciseHistory] = useState<{ name: string; data: Array<{ date: string; weight: number }> } | null>(null);
   const [form, setForm] = useState({ date: today, name: "", workout_type: "strength", duration_min: "", notes: "" });
   const [exercises, setExercises] = useState([emptyExercise()]);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/training?days=30");
@@ -59,26 +60,31 @@ export default function TrainingPage() {
 
   const saveWorkout = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = {
-      ...form,
-      duration_min: form.duration_min ? parseInt(form.duration_min) : undefined,
-      exercises: exercises
-        .filter(ex => ex.name.trim())
-        .map(ex => ({
-          name: ex.name,
-          sets: parseInt(ex.sets) || 1,
-          reps: ex.reps,
-          weight: ex.weight ? parseFloat(ex.weight) : undefined,
-          weight_unit: ex.weight_unit,
-          rpe: ex.rpe ? parseFloat(ex.rpe) : undefined,
-          notes: ex.notes,
-        })),
-    };
-    await fetch("/api/training", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    setModalOpen(false);
-    setForm({ date: today, name: "", workout_type: "strength", duration_min: "", notes: "" });
-    setExercises([emptyExercise()]);
-    await load();
+    setApiError(null);
+    try {
+      const payload = {
+        ...form,
+        duration_min: form.duration_min ? parseInt(form.duration_min) : undefined,
+        exercises: exercises
+          .filter(ex => ex.name.trim())
+          .map(ex => ({
+            name: ex.name,
+            sets: parseInt(ex.sets) || 1,
+            reps: ex.reps,
+            weight: ex.weight ? parseFloat(ex.weight) : undefined,
+            weight_unit: ex.weight_unit,
+            rpe: ex.rpe ? parseFloat(ex.rpe) : undefined,
+            notes: ex.notes,
+          })),
+      };
+      const res = await fetch("/api/training", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setModalOpen(false);
+      setForm({ date: today, name: "", workout_type: "strength", duration_min: "", notes: "" });
+      setExercises([emptyExercise()]);
+      await load();
+    } catch (err) { setApiError(String(err).replace("Error: ", "")); }
   };
 
   const deleteWorkout = async (id: number) => {
@@ -236,8 +242,9 @@ export default function TrainingPage() {
       )}
 
       {/* Add Workout Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Log Workout" className="max-w-2xl">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setApiError(null); }} title="Log Workout" className="max-w-2xl">
         <form onSubmit={saveWorkout} className="space-y-4">
+          {apiError && <div className="px-3 py-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B] text-xs">{apiError}</div>}
           <div className="grid grid-cols-2 gap-3">
             <Input label="Date" type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} required />
             <Select label="Type" value={form.workout_type} onChange={e => setForm(p => ({ ...p, workout_type: e.target.value }))} options={WORKOUT_TYPES} />
