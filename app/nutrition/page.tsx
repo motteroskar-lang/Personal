@@ -11,6 +11,7 @@ import { todayStr, formatDate } from "@/lib/utils";
 interface FoodEntry { id: number; date: string; meal_type: string; food_name: string; amount?: number; unit?: string; calories: number; protein: number; carbs: number; fat: number }
 interface NutritionGoals { calories: number; protein: number; carbs: number; fat: number }
 interface Totals { calories: number; protein: number; carbs: number; fat: number }
+interface WaterData { amount_ml: number; goal_ml: number }
 
 const MEAL_TYPES = [
   { value: "breakfast", label: "🌅 Breakfast" },
@@ -56,14 +57,44 @@ export default function NutritionPage() {
   const [goalsForm, setGoalsForm] = useState({ calories: "2500", protein: "180", carbs: "250", fat: "80" });
   const [form, setForm] = useState({ meal_type: "lunch", food_name: "", amount: "", unit: "g", calories: "", protein: "", carbs: "", fat: "" });
   const [apiError, setApiError] = useState<string | null>(null);
+  const [water, setWater] = useState<WaterData>({ amount_ml: 0, goal_ml: 2500 });
+  const [waterGoalModal, setWaterGoalModal] = useState(false);
+  const [waterGoalInput, setWaterGoalInput] = useState("2500");
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/nutrition?date=${date}`);
-    const data = await res.json();
-    setEntries(data.entries ?? []);
-    setTotals(data.totals ?? { calories: 0, protein: 0, carbs: 0, fat: 0 });
-    if (data.goals) setGoals(data.goals);
+    const [nutRes, waterRes] = await Promise.all([
+      fetch(`/api/nutrition?date=${date}`),
+      fetch(`/api/water?date=${date}`),
+    ]);
+    const nutData = await nutRes.json();
+    const waterData = await waterRes.json();
+    setEntries(nutData.entries ?? []);
+    setTotals(nutData.totals ?? { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    if (nutData.goals) setGoals(nutData.goals);
+    setWater({ amount_ml: waterData.amount_ml ?? 0, goal_ml: waterData.goal_ml ?? 2500 });
   }, [date]);
+
+  const addWater = async (ml: number) => {
+    const res = await fetch("/api/water", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "add", amount_ml: ml, date }),
+    });
+    const data = await res.json();
+    setWater({ amount_ml: data.amount_ml ?? 0, goal_ml: data.goal_ml ?? 2500 });
+  };
+
+  const saveWaterGoal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch("/api/water", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "goal", goal_ml: parseInt(waterGoalInput) || 2500, date }),
+    });
+    const data = await res.json();
+    setWater({ amount_ml: data.amount_ml ?? 0, goal_ml: data.goal_ml ?? 2500 });
+    setWaterGoalModal(false);
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -172,6 +203,47 @@ export default function NutritionPage() {
         </div>
       </Card>
 
+      {/* Water intake tracker */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[11px] font-mono uppercase tracking-[0.12em] text-[#76746E]">💧 Water Intake</div>
+          <button onClick={() => { setWaterGoalInput(water.goal_ml.toString()); setWaterGoalModal(true); }}
+            className="text-[10px] font-mono text-[#76746E] hover:text-[#B8B6B0] transition-colors">
+            Goal: {water.goal_ml}ml
+          </button>
+        </div>
+        <div className="flex items-center gap-4 mb-3">
+          <div className="flex-1">
+            <div className="flex justify-between text-xs font-mono mb-1.5">
+              <span className="text-[#60A5FA] font-bold">{water.amount_ml}ml</span>
+              <span className="text-[#76746E]">{Math.max(0, water.goal_ml - water.amount_ml)}ml left</span>
+            </div>
+            <div className="h-3 bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, (water.amount_ml / water.goal_ml) * 100)}%`,
+                  background: water.amount_ml >= water.goal_ml ? "#6BE3A4" : "#60A5FA",
+                  boxShadow: `0 0 8px ${water.amount_ml >= water.goal_ml ? "rgba(107,227,164,0.5)" : "rgba(96,165,250,0.5)"}`,
+                }}
+              />
+            </div>
+            <div className="text-[9px] font-mono text-[#76746E] mt-1">
+              {Math.round((water.amount_ml / water.goal_ml) * 100)}% of daily goal
+            </div>
+          </div>
+          <div className="text-3xl">{water.amount_ml >= water.goal_ml ? "✅" : "💧"}</div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {[150, 250, 330, 500].map(ml => (
+            <button key={ml} onClick={() => addWater(ml)}
+              className="px-3 py-1.5 text-xs font-mono rounded-lg bg-[#60A5FA]/10 border border-[#60A5FA]/20 text-[#60A5FA] hover:bg-[#60A5FA]/20 transition-colors">
+              +{ml}ml
+            </button>
+          ))}
+        </div>
+      </Card>
+
       {/* Food log by meal */}
       <div className="space-y-4">
         {MEAL_TYPES.map(meal => {
@@ -252,6 +324,18 @@ export default function NutritionPage() {
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="ghost" type="button" onClick={() => setGoalsModalOpen(false)}>Cancel</Button>
             <Button variant="primary" type="submit">Save Goals</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Water goal modal */}
+      <Modal open={waterGoalModal} onClose={() => setWaterGoalModal(false)} title="Daily Water Goal">
+        <form onSubmit={saveWaterGoal} className="space-y-4">
+          <Input label="Daily Water Goal (ml)" type="number" value={waterGoalInput} onChange={e => setWaterGoalInput(e.target.value)} placeholder="2500" />
+          <div className="text-xs text-[#76746E]">Recommended: 2000–3000ml per day depending on activity level.</div>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="ghost" type="button" onClick={() => setWaterGoalModal(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">Save Goal</Button>
           </div>
         </form>
       </Modal>

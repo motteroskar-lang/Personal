@@ -10,11 +10,11 @@ interface HealthData {
   sleep_duration_min?: number;
   hrv_avg?: number;
   resting_hr?: number;
-  respiratory_rate?: number;
   body_battery_start?: number;
   steps?: number;
   stress_avg?: number;
   spo2_avg?: number;
+  respiratory_rate?: number;
 }
 
 interface Goal {
@@ -43,6 +43,12 @@ interface AIInsight {
   priority: string;
   read: boolean;
 }
+
+interface HabitStats { total: number; done: number }
+interface WaterData { amount_ml: number; goal_ml: number }
+interface NutritionTotals { calories: number; protein: number; carbs: number; fat: number }
+interface NutritionGoals { calories: number; protein: number; carbs: number; fat: number }
+interface BodyLatest { weight_kg?: number; body_fat_pct?: number; date?: string }
 
 function DayRing() {
   const [time, setTime] = useState(new Date());
@@ -130,34 +136,72 @@ function DayRing() {
   );
 }
 
+function HabitsRing({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const C = 2 * Math.PI * 28;
+  const color = pct >= 100 ? "#6BE3A4" : pct >= 66 ? "#F2C063" : pct >= 33 ? "#60A5FA" : "#76746E";
+  return (
+    <div className="flex items-center gap-3">
+      <div className="relative w-[64px] h-[64px]">
+        <svg viewBox="0 0 64 64" className="w-full h-full">
+          <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
+          <circle cx="32" cy="32" r="28" fill="none" stroke={color} strokeWidth="5" strokeLinecap="round"
+            transform="rotate(-90 32 32)" strokeDasharray={C} strokeDashoffset={C * (1 - pct / 100)}
+            style={{ transition: "stroke-dashoffset 0.7s cubic-bezier(0.22,1,0.36,1)" }} />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-sm font-bold font-mono" style={{ color }}>{pct}%</span>
+        </div>
+      </div>
+      <div>
+        <div className="font-bold text-sm" style={{ color }}>{done}/{total} habits</div>
+        <div className="text-[10px] font-mono uppercase tracking-wider text-[#76746E]">Today</div>
+        {pct >= 100 && <div className="text-[10px] text-[#6BE3A4]">🔥 All done!</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const today = todayStr();
   const [health, setHealth] = useState<HealthData | null>(null);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [insights, setInsights] = useState<AIInsight[]>([]);
+  const [habitStats, setHabitStats] = useState<HabitStats>({ total: 0, done: 0 });
+  const [water, setWater] = useState<WaterData>({ amount_ml: 0, goal_ml: 2500 });
+  const [nutrition, setNutrition] = useState<{ totals: NutritionTotals; goals: NutritionGoals } | null>(null);
+  const [bodyLatest, setBodyLatest] = useState<BodyLatest | null>(null);
   const [newTask, setNewTask] = useState("");
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [generatingInsights, setGeneratingInsights] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [healthRes, goalsRes, tasksRes, insightsRes] = await Promise.all([
+    const [healthRes, goalsRes, tasksRes, insightsRes, habitsRes, waterRes, nutritionRes, bodyRes] = await Promise.all([
       fetch(`/api/health?date=${today}`),
       fetch(`/api/goals`),
       fetch(`/api/goals?type=daily&date=${today}`),
       fetch(`/api/ai/insights`),
+      fetch(`/api/habits?date=${today}`),
+      fetch(`/api/water?date=${today}`),
+      fetch(`/api/nutrition?date=${today}`),
+      fetch(`/api/body?days=1`),
     ]);
 
-    const healthData = await healthRes.json();
-    const goalsData = await goalsRes.json();
-    const tasksData = await tasksRes.json();
-    const insightsData = await insightsRes.json();
+    const [healthData, goalsData, tasksData, insightsData, habitsData, waterData, nutritionData, bodyData] = await Promise.all([
+      healthRes.json(), goalsRes.json(), tasksRes.json(), insightsRes.json(),
+      habitsRes.json(), waterRes.json(), nutritionRes.json(), bodyRes.json(),
+    ]);
 
     setHealth(healthData.data);
     setGoals(goalsData.goals ?? []);
     setTasks(tasksData.tasks ?? []);
     setInsights(insightsData.insights ?? []);
+    setHabitStats(habitsData.stats ?? { total: 0, done: 0 });
+    setWater({ amount_ml: waterData.amount_ml ?? 0, goal_ml: waterData.goal_ml ?? 2500 });
+    if (nutritionData.totals) setNutrition({ totals: nutritionData.totals, goals: nutritionData.goals ?? { calories: 2500, protein: 180, carbs: 250, fat: 80 } });
+    setBodyLatest(bodyData.latest ?? null);
   }, [today]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -232,6 +276,16 @@ export default function Dashboard() {
     }
   };
 
+  const addWater = async (ml: number) => {
+    const res = await fetch("/api/water", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "add", amount_ml: ml, date: today }),
+    });
+    const data = await res.json();
+    setWater({ amount_ml: data.amount_ml ?? 0, goal_ml: data.goal_ml ?? 2500 });
+  };
+
   const doneTasks = tasks.filter(t => t.done).length;
   const urgentGoals = goals.filter(g => g.urgency === "critical" || g.urgency === "high");
   const criticalInsights = insights.filter(i => i.priority === "high" && !i.read);
@@ -272,6 +326,80 @@ export default function Dashboard() {
       <Card>
         <DayRing />
       </Card>
+
+      {/* Today's stats strip: habits + water + nutrition + body */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Habits ring */}
+        <Card className="flex items-center gap-4">
+          <HabitsRing done={habitStats.done} total={habitStats.total} />
+          {habitStats.total === 0 && (
+            <div className="text-xs text-[#76746E]">No habits yet</div>
+          )}
+        </Card>
+
+        {/* Water */}
+        <Card>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] font-mono uppercase tracking-[0.1em] text-[#76746E]">💧 Water</div>
+            <span className="text-xs font-bold font-mono text-[#60A5FA]">{water.amount_ml}ml</span>
+          </div>
+          <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden mb-2">
+            <div className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${Math.min(100, (water.amount_ml / water.goal_ml) * 100)}%`,
+                background: water.amount_ml >= water.goal_ml ? "#6BE3A4" : "#60A5FA",
+              }} />
+          </div>
+          <div className="flex gap-1.5">
+            {[250, 500].map(ml => (
+              <button key={ml} onClick={() => addWater(ml)}
+                className="flex-1 py-1 text-[10px] font-mono rounded-lg bg-[#60A5FA]/10 border border-[#60A5FA]/20 text-[#60A5FA] hover:bg-[#60A5FA]/20 transition-colors">
+                +{ml}ml
+              </button>
+            ))}
+          </div>
+          <div className="text-[9px] font-mono text-[#76746E] mt-1.5">goal: {water.goal_ml}ml</div>
+        </Card>
+
+        {/* Nutrition today */}
+        <Card>
+          <div className="text-[10px] font-mono uppercase tracking-[0.1em] text-[#76746E] mb-2">🥗 Nutrition</div>
+          {nutrition ? (
+            <>
+              <div className="text-xl font-bold font-mono text-[#F2C063]">{Math.round(nutrition.totals.calories)}<span className="text-xs text-[#76746E] ml-1">kcal</span></div>
+              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden my-2">
+                <div className="h-full rounded-full transition-all"
+                  style={{ width: `${Math.min(100, (nutrition.totals.calories / nutrition.goals.calories) * 100)}%`, background: "#F2C063" }} />
+              </div>
+              <div className="flex justify-between text-[9px] font-mono text-[#76746E]">
+                <span>P: {Math.round(nutrition.totals.protein)}g</span>
+                <span>C: {Math.round(nutrition.totals.carbs)}g</span>
+                <span>F: {Math.round(nutrition.totals.fat)}g</span>
+              </div>
+            </>
+          ) : (
+            <div className="text-[11px] text-[#76746E]">Nothing logged</div>
+          )}
+        </Card>
+
+        {/* Body weight */}
+        <Card>
+          <div className="text-[10px] font-mono uppercase tracking-[0.1em] text-[#76746E] mb-2">⚖️ Body</div>
+          {bodyLatest?.weight_kg ? (
+            <>
+              <div className="text-xl font-bold font-mono text-[#6BE3A4]">{bodyLatest.weight_kg}<span className="text-xs text-[#76746E] ml-1">kg</span></div>
+              {bodyLatest.body_fat_pct && (
+                <div className="text-xs font-mono text-[#76746E] mt-1">{bodyLatest.body_fat_pct}% body fat</div>
+              )}
+              {bodyLatest.date && (
+                <div className="text-[9px] font-mono text-[#76746E] mt-1">{formatDate(bodyLatest.date, "d MMM")}</div>
+              )}
+            </>
+          ) : (
+            <div className="text-[11px] text-[#76746E]">Not logged</div>
+          )}
+        </Card>
+      </div>
 
       {/* Health snapshot */}
       {health && (
@@ -318,34 +446,6 @@ export default function Dashboard() {
               </Card>
             ))}
           </div>
-          {(health.respiratory_rate || health.spo2_avg) && (
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              {health.respiratory_rate && (
-                <Card>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-[10.5px] font-mono uppercase tracking-[0.1em] text-[#76746E]">Respiratory Rate</div>
-                      <div className="text-2xl font-bold font-mono mt-1">{health.respiratory_rate.toFixed(1)}</div>
-                      <div className="text-xs text-[#76746E]">breaths/min</div>
-                    </div>
-                    <span className="text-3xl">🌬️</span>
-                  </div>
-                </Card>
-              )}
-              {health.spo2_avg && (
-                <Card>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-[10.5px] font-mono uppercase tracking-[0.1em] text-[#76746E]">SpO2</div>
-                      <div className="text-2xl font-bold font-mono mt-1">{health.spo2_avg.toFixed(0)}%</div>
-                      <div className="text-xs text-[#76746E]">blood oxygen</div>
-                    </div>
-                    <span className="text-3xl">🩸</span>
-                  </div>
-                </Card>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -394,7 +494,6 @@ export default function Dashboard() {
         </div>
 
         <Card>
-          {/* Progress bar */}
           {tasks.length > 0 && (
             <div className="flex gap-1 mb-4 h-1.5">
               {tasks.map(t => (
@@ -404,7 +503,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Task list */}
           {tasks.length === 0 ? (
             <div className="text-center py-8 text-[#76746E]">
               <div className="text-3xl mb-2">🎯</div>
@@ -428,7 +526,6 @@ export default function Dashboard() {
             </ul>
           )}
 
-          {/* Add task */}
           <form onSubmit={addTask} className="flex gap-2 pt-3 border-t border-white/6">
             <input
               type="text"
@@ -468,7 +565,7 @@ export default function Dashboard() {
         <SectionTitle>Quick Access</SectionTitle>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { href: "/health", label: "Log Health", icon: "❤️", color: "#6BE3A4" },
+            { href: "/habits", label: "Habits", icon: "✅", color: "#6BE3A4" },
             { href: "/training", label: "Log Workout", icon: "🏋️", color: "#F2C063" },
             { href: "/nutrition", label: "Log Food", icon: "🥗", color: "#60A5FA" },
             { href: "/journal", label: "Write Journal", icon: "📔", color: "#A78BFA" },
