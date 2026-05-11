@@ -124,6 +124,127 @@ Return JSON array:
   }
 }
 
+export interface CoachTargets {
+  // Cardio
+  fiveK_current?: string;
+  fiveK_target?: string;
+  rhr_target?: number;
+  weekly_km?: number;
+  // Strength
+  bench_current?: number;
+  bench_target?: number;
+  squat_current?: number;
+  squat_target?: number;
+  deadlift_current?: number;
+  deadlift_target?: number;
+  pullups_current?: number;
+  pullups_target?: number;
+  // Aesthetics
+  weight_target?: number;
+  body_fat_current?: number;
+  body_fat_target?: number;
+}
+
+export interface CoachDayPlan {
+  day: string;
+  type: "training" | "rest" | "recovery";
+  title: string;
+  details: string;
+  nutrition: string;
+}
+
+export interface CoachingPlan {
+  assessment: string;
+  timeToGoal: string;
+  weekPlan: CoachDayPlan[];
+  weeklyFocus: string;
+  nutritionTargets: { calories: number; protein: number; carbs: number; fat: number; note: string };
+  recoveryNotes: string;
+  keyMetric: string;
+}
+
+export async function generateCoachingPlan(params: {
+  focus: "strength" | "aesthetics" | "cardio";
+  targets: CoachTargets;
+  currentStats: {
+    rhr?: number;
+    hrv?: number;
+    sleep_h?: number;
+    weight?: number;
+    body_fat?: number;
+  };
+  recentWorkouts: Array<{ name: string; type: string; date: string }>;
+  nutrition7days: { avg_cal: number; avg_protein: number; avg_carbs: number; avg_fat: number };
+  personalRecords: Array<{ exercise_name: string; value: number; unit: string }>;
+}): Promise<CoachingPlan> {
+  const client = getAIClient();
+
+  const focusDescriptions: Record<string, string> = {
+    strength: "maximal strength via progressive overload and compound movements",
+    aesthetics: "body recomposition through hypertrophy training and strategic nutrition",
+    cardio: "cardiovascular performance through zone-based training and periodization",
+  };
+
+  const targetsLines = Object.entries(params.targets)
+    .filter(([, v]) => v !== undefined && v !== "" && v !== 0)
+    .map(([k, v]) => `  ${k}: ${v}`)
+    .join("\n");
+
+  const userPrompt = `Generate a complete 7-day coaching plan for this athlete.
+
+FOCUS: ${params.focus.toUpperCase()} — ${focusDescriptions[params.focus]}
+
+TARGETS:
+${targetsLines || "  None specified"}
+
+CURRENT RECOVERY STATE:
+  RHR: ${params.currentStats.rhr ?? "unknown"}bpm
+  HRV: ${params.currentStats.hrv ?? "unknown"}ms
+  Sleep last night: ${params.currentStats.sleep_h != null ? params.currentStats.sleep_h.toFixed(1) + "h" : "unknown"}
+  Body weight: ${params.currentStats.weight ?? "unknown"}kg${params.currentStats.body_fat != null ? `\n  Body fat: ${params.currentStats.body_fat}%` : ""}
+
+RECENT TRAINING (last 10 sessions):
+${params.recentWorkouts.length > 0 ? params.recentWorkouts.map(w => `  ${w.date}: ${w.name} (${w.type})`).join("\n") : "  No sessions logged yet"}
+
+NUTRITION (7-day average):
+  Calories: ${params.nutrition7days.avg_cal} kcal/day
+  Protein: ${params.nutrition7days.avg_protein}g | Carbs: ${params.nutrition7days.avg_carbs}g | Fat: ${params.nutrition7days.avg_fat}g
+
+PERSONAL RECORDS:
+${params.personalRecords.length > 0 ? params.personalRecords.map(pr => `  ${pr.exercise_name}: ${pr.value}${pr.unit}`).join("\n") : "  None logged"}
+
+Return a JSON object with EXACTLY this structure (no markdown, raw JSON only):
+{
+  "assessment": "2-3 sentences: honest assessment of current state vs goal, what the biggest limiter is",
+  "timeToGoal": "realistic timeframe e.g. '12-16 weeks with consistent execution'",
+  "weekPlan": [
+    { "day": "Monday", "type": "training", "title": "short title", "details": "exact prescription: sets x reps @ weight, or pace/distance for cardio", "nutrition": "specific nutrition note for this day" },
+    { "day": "Tuesday", "type": "rest", "title": "Rest / Active Recovery", "details": "...", "nutrition": "..." },
+    { "day": "Wednesday", "type": "training", "title": "...", "details": "...", "nutrition": "..." },
+    { "day": "Thursday", "type": "training", "title": "...", "details": "...", "nutrition": "..." },
+    { "day": "Friday", "type": "training", "title": "...", "details": "...", "nutrition": "..." },
+    { "day": "Saturday", "type": "training", "title": "...", "details": "...", "nutrition": "..." },
+    { "day": "Sunday", "type": "recovery", "title": "...", "details": "...", "nutrition": "..." }
+  ],
+  "weeklyFocus": "the ONE thing to nail this week",
+  "nutritionTargets": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "note": "one sentence rationale" },
+  "recoveryNotes": "specific protocol based on current HRV/RHR data",
+  "keyMetric": "what to measure daily this week and why"
+}`;
+
+  const msg = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 2500,
+    system: `You are an elite performance coach. You specialize in ${focusDescriptions[params.focus]}. Give specific, numbered, data-driven coaching. No fluff. Use exact numbers (sets, reps, kg, km, pace per km). Be direct and demanding.`,
+    messages: [{ role: "user", content: userPrompt }],
+  });
+
+  const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("AI returned invalid response format");
+  return JSON.parse(match[0]) as CoachingPlan;
+}
+
 export async function chatWithAI(message: string, context: string): Promise<string> {
   const client = getAIClient();
 

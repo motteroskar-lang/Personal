@@ -6,10 +6,11 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "⚡" },
+  { href: "/coach", label: "Coach", icon: "🤖" },
   { href: "/goals", label: "Goals", icon: "🎯" },
-  { href: "/habits", label: "Habits", icon: "✅" },
   { href: "/health", label: "Health", icon: "❤️" },
   { href: "/training", label: "Training", icon: "🏋️" },
+  { href: "/habits", label: "Habits", icon: "✅" },
   { href: "/nutrition", label: "Nutrition", icon: "🥗" },
   { href: "/journal", label: "Journal", icon: "📔" },
   { href: "/calendar", label: "Calendar", icon: "📅" },
