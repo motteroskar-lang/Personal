@@ -42,17 +42,18 @@ async function rawRequest(
     };
 
     const req = https.request(reqOpts, (res) => {
-      let body = "";
-      res.on("data", (c) => (body += c));
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
       res.on("end", () =>
         resolve({
           status: res.statusCode ?? 0,
           location: res.headers.location ?? null,
           setCookies: ([] as string[]).concat(res.headers["set-cookie"] ?? []),
-          body,
+          body: Buffer.concat(chunks).toString("utf8"),
         })
       );
     });
+    req.setTimeout(8000, () => req.destroy(new Error("Garmin-Server antwortet nicht (Timeout)")));
     req.on("error", reject);
     if (opts.body) req.write(opts.body);
     req.end();

@@ -54,7 +54,6 @@ let _initialized = false;
 
 export async function initSchema(): Promise<void> {
   if (_initialized) return;
-  _initialized = true;
 
   const db = getDb();
   await db.batch(
@@ -261,4 +260,6 @@ export async function initSchema(): Promise<void> {
   ]) {
     try { await db.execute({ sql, args: [] }); } catch { /* already exists */ }
   }
+
+  _initialized = true;
 }
