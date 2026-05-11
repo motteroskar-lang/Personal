@@ -5,16 +5,13 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: "⚡" },
-  { href: "/coach", label: "Coach", icon: "🤖" },
-  { href: "/goals", label: "Goals", icon: "🎯" },
-  { href: "/health", label: "Health", icon: "❤️" },
-  { href: "/training", label: "Training", icon: "🏋️" },
-  { href: "/habits", label: "Habits", icon: "✅" },
-  { href: "/nutrition", label: "Nutrition", icon: "🥗" },
-  { href: "/journal", label: "Journal", icon: "📔" },
-  { href: "/calendar", label: "Calendar", icon: "📅" },
-  { href: "/finance", label: "Finance", icon: "💰" },
+  { href: "/", label: "Heute", icon: "⚡" },
+  { href: "/goals", label: "Ziele", icon: "🎯" },
+  { href: "/coach", label: "Coach", icon: "🏃" },
+  { href: "/business", label: "Business", icon: "💼" },
+  { href: "/mind", label: "Geist", icon: "🧘" },
+  { href: "/finance", label: "Finanzen", icon: "💰" },
+  { href: "/social", label: "Soziales", icon: "👥" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

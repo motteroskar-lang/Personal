@@ -124,6 +124,101 @@ Return JSON array:
   }
 }
 
+// ── Universal Goal Plan ───────────────────────────────────────────────────────
+
+export interface GoalPlan {
+  personalityFit: string;
+  fitLevel: "aligned" | "challenging" | "misaligned";
+  phases: Array<{
+    name: string;
+    duration: string;
+    focus: string;
+    actions: string[];
+  }>;
+  weeklyCommitment: string;
+  dailyAction: string;
+  quickWins: string[];
+  nextMilestone: string;
+  biggestRisk: string;
+  successMetric: string;
+}
+
+export async function generateGoalPlan(params: {
+  category: string;
+  goal: string;
+  currentState: string;
+  timeframe: string;
+  motivation?: string;
+  pastExperience?: string;
+}): Promise<GoalPlan> {
+  const client = getAIClient();
+
+  const msg = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 2000,
+    system: `You are a brutally honest life advisor and planning expert. You do NOT motivate — you assess and plan. You tell people what they need to hear, not what they want to hear. If a goal is unrealistic or doesn't fit the person, you say so clearly. Your plans are specific, numbered, and time-bound. No generic advice. No fluff.`,
+    messages: [{
+      role: "user",
+      content: `Assess and plan this goal.
+
+CATEGORY: ${params.category}
+GOAL: ${params.goal}
+CURRENT STATE: ${params.currentState}
+TIMEFRAME: ${params.timeframe}
+${params.motivation ? `MOTIVATION: ${params.motivation}` : ""}
+${params.pastExperience ? `PAST EXPERIENCE: ${params.pastExperience}` : ""}
+
+Return raw JSON only (no markdown, no code block):
+{
+  "personalityFit": "2-3 honest sentences assessing if this goal fits the person's described situation. Be direct — include both alignment and any red flags.",
+  "fitLevel": "aligned|challenging|misaligned",
+  "phases": [
+    { "name": "Phase name", "duration": "X weeks", "focus": "what to focus on", "actions": ["specific action 1", "specific action 2", "specific action 3"] }
+  ],
+  "weeklyCommitment": "X hours/week",
+  "dailyAction": "The single most important daily habit for this goal (one concrete sentence)",
+  "quickWins": ["3 specific things to do THIS WEEK to get started — concrete, doable"],
+  "nextMilestone": "First checkpoint: what does success look like in 30 days",
+  "biggestRisk": "The most likely reason this fails — be honest",
+  "successMetric": "How to measure if it's working (specific metric)"
+}`,
+    }],
+  });
+
+  const text = msg.content[0].type === "text" ? msg.content[0].text : "{}";
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("AI returned invalid format");
+  return JSON.parse(match[0]) as GoalPlan;
+}
+
+export async function generateTodayBriefing(plans: Array<{
+  category: string;
+  title: string;
+  daily_action: string;
+  next_milestone: string;
+}>): Promise<string> {
+  if (plans.length === 0) return "";
+  const client = getAIClient();
+
+  const msg = await client.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 200,
+    messages: [{
+      role: "user",
+      content: `You are a sharp daily briefing AI. Given these active goals and today's actions, write ONE powerful sentence (max 25 words) that frames what today is really about. Be direct, no fluff.
+
+Active goals:
+${plans.map(p => `- ${p.category}: ${p.daily_action}`).join("\n")}
+
+One sentence, present tense, action-oriented.`,
+    }],
+  });
+
+  return msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
+}
+
+// ── Coach Targets ─────────────────────────────────────────────────────────────
+
 export interface CoachTargets {
   // Cardio
   fiveK_current?: string;

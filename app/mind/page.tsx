@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { GoalPlan } from "@/lib/ai";
 
-interface FinPlan {
+interface MindPlan {
   id: number;
   title: string;
   daily_action: string;
@@ -18,25 +18,26 @@ interface FinPlan {
   timeframe: string;
 }
 
-export default function FinancePage() {
-  const [plan, setPlan] = useState<FinPlan | null>(null);
+export default function MindPage() {
+  const [plan, setPlan] = useState<MindPlan | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [goal, setGoal] = useState("");
   const [currentState, setCurrentState] = useState("");
-  const [monthlyIncome, setMonthlyIncome] = useState("");
-  const [monthlyExpenses, setMonthlyExpenses] = useState("");
-  const [timeframe, setTimeframe] = useState("1 Jahr");
+  const [timeframe, setTimeframe] = useState("3 Monate");
+  const [areas, setAreas] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
   const [preview, setPreview] = useState<GoalPlan | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const MIND_AREAS = ["Meditation", "Lesen", "Journaling", "Lernen", "Stressreduktion", "Kreativität", "Achtsamkeit"];
+
   useEffect(() => {
     fetch("/api/plans")
       .then(r => r.json())
       .then(d => {
-        const fin = (d.plans ?? []).find((p: { category: string }) => p.category === "financial");
-        if (fin) setPlan(fin as FinPlan);
+        const mental = (d.plans ?? []).find((p: { category: string }) => p.category === "mental");
+        if (mental) setPlan(mental as MindPlan);
       });
   }, []);
 
@@ -45,25 +46,22 @@ export default function FinancePage() {
     setGenerating(true);
     setError("");
     setPreview(null);
-    const context = [
-      currentState,
-      monthlyIncome ? `Monatliches Einkommen: €${monthlyIncome}` : "",
-      monthlyExpenses ? `Monatliche Ausgaben: €${monthlyExpenses}` : "",
-    ].filter(Boolean).join(". ");
     try {
       const res = await fetch("/api/plan/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          category: "financial",
-          goal,
-          currentState: context,
+          category: "mental",
+          goal: `${goal}${areas.length ? `. Bereiche: ${areas.join(", ")}` : ""}`,
+          currentState,
           timeframe,
         }),
       });
       const data = await res.json();
       if (data.error) {
-        setError(data.error.includes("ANTHROPIC_API_KEY") ? "Kein API Key. Settings → AI & API Keys." : data.error);
+        setError(data.error.includes("ANTHROPIC_API_KEY")
+          ? "Kein API Key. Settings → AI & API Keys."
+          : data.error);
         return;
       }
       setPreview(data as GoalPlan);
@@ -82,7 +80,7 @@ export default function FinancePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          category: "financial",
+          category: "mental",
           title: goal.slice(0, 80),
           goal_description: goal,
           current_state: currentState,
@@ -97,8 +95,8 @@ export default function FinancePage() {
       });
       const res = await fetch("/api/plans");
       const d = await res.json();
-      const fin = (d.plans ?? []).find((p: { category: string }) => p.category === "financial");
-      if (fin) setPlan(fin as FinPlan);
+      const mental = (d.plans ?? []).find((p: { category: string }) => p.category === "mental");
+      if (mental) setPlan(mental as MindPlan);
       setPreview(null);
       setShowForm(false);
     } finally {
@@ -109,15 +107,15 @@ export default function FinancePage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <div className="text-[11px] font-mono font-bold tracking-[0.18em] uppercase text-[#76746E] mb-1">Wealth</div>
-        <h1 className="text-3xl font-bold tracking-[-0.025em] gradient-text">Finanzen</h1>
-        <p className="text-sm text-[#76746E] mt-1">Sparplan, Investments und Vermögensaufbau — strategisch, kein Ausgaben-Tracking.</p>
+        <div className="text-[11px] font-mono font-bold tracking-[0.18em] uppercase text-[#76746E] mb-1">Inner Work</div>
+        <h1 className="text-3xl font-bold tracking-[-0.025em] gradient-text">Geist & Spiritualität</h1>
+        <p className="text-sm text-[#76746E] mt-1">Mentale Klarheit, Wachstum und innere Stärke — strategisch geplant.</p>
       </div>
 
       {plan && !showForm && (
         <div className="space-y-4">
-          <div className="p-4 rounded-2xl border border-[#6BE3A4]/30 bg-[#6BE3A4]/5">
-            <div className="text-[9px] font-mono uppercase tracking-[0.14em] text-[#6BE3A4] mb-1.5">Diese Woche tun</div>
+          <div className="p-4 rounded-2xl border border-[#C084FC]/30 bg-[#C084FC]/5">
+            <div className="text-[9px] font-mono uppercase tracking-[0.14em] text-[#C084FC] mb-1.5">Heute</div>
             <p className="text-base font-bold text-[#FAFAFA]">{plan.daily_action}</p>
           </div>
 
@@ -130,11 +128,11 @@ export default function FinancePage() {
 
           {plan.quick_wins?.length > 0 && (
             <Card>
-              <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-[#76746E] mb-3">Konkrete Schritte</div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-[#76746E] mb-3">Diese Woche</div>
               <div className="space-y-2">
                 {plan.quick_wins.map((w, i) => (
                   <div key={i} className="flex items-start gap-2">
-                    <span className="text-[#6BE3A4] flex-shrink-0">→</span>
+                    <span className="text-[#C084FC] flex-shrink-0">→</span>
                     <span className="text-sm text-[#B8B6B0]">{w}</span>
                   </div>
                 ))}
@@ -144,64 +142,64 @@ export default function FinancePage() {
 
           {plan.plan_json?.phases?.length > 0 && (
             <Card>
-              <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-[#76746E] mb-3">Finanzplan</div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-[#76746E] mb-3">Phasen</div>
               <div className="space-y-3">
                 {plan.plan_json.phases.map((phase, i) => (
-                  <div key={i} className="pl-3 border-l-2 border-[#6BE3A4]/20">
+                  <div key={i} className="pl-3 border-l-2 border-[#C084FC]/20">
                     <div className="flex items-baseline gap-2 mb-1">
                       <span className="text-xs font-semibold text-[#FAFAFA]">{phase.name}</span>
                       <span className="text-[10px] text-[#76746E]">{phase.duration}</span>
                     </div>
-                    <p className="text-[11px] text-[#76746E] mb-1">{phase.focus}</p>
-                    <div className="space-y-0.5">
-                      {phase.actions?.map((a, j) => (
-                        <div key={j} className="text-[11px] text-[#B8B6B0]">• {a}</div>
-                      ))}
-                    </div>
+                    <p className="text-[11px] text-[#76746E]">{phase.focus}</p>
                   </div>
                 ))}
               </div>
             </Card>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            {plan.plan_json?.biggestRisk && (
-              <div className="p-3 rounded-xl bg-[#FF6B6B]/5 border border-[#FF6B6B]/15">
-                <div className="text-[9px] font-mono uppercase text-[#FF6B6B] mb-1">Größtes Risiko</div>
-                <p className="text-[11px] text-[#B8B6B0]">{plan.plan_json.biggestRisk}</p>
-              </div>
-            )}
-            {plan.plan_json?.successMetric && (
-              <div className="p-3 rounded-xl bg-[#6BE3A4]/5 border border-[#6BE3A4]/15">
-                <div className="text-[9px] font-mono uppercase text-[#6BE3A4] mb-1">Erfolgsmetrik</div>
-                <p className="text-[11px] text-[#B8B6B0]">{plan.plan_json.successMetric}</p>
-              </div>
-            )}
-          </div>
-
-          <Button variant="secondary" onClick={() => setShowForm(true)}>Plan aktualisieren</Button>
+          <Button variant="secondary" onClick={() => setShowForm(true)}>Plan neu erstellen</Button>
         </div>
       )}
 
       {!plan && !showForm && (
         <div className="text-center py-12">
-          <div className="text-5xl mb-3">💰</div>
-          <p className="text-[#76746E] text-sm mb-6">Noch kein Finanzplan. Die KI erstellt dir einen konkreten Sparplan.</p>
+          <div className="text-5xl mb-3">🧘</div>
+          <p className="text-[#76746E] text-sm mb-6">Noch kein mentaler Plan. Die KI hilft dir, geistige Klarheit zu entwickeln.</p>
           <Button variant="primary" onClick={() => setShowForm(true)}>Plan erstellen</Button>
         </div>
       )}
 
       {showForm && (
         <Card>
-          <div className="text-sm font-bold text-[#FAFAFA] mb-4">Finanzplan erstellen</div>
+          <div className="text-sm font-bold text-[#FAFAFA] mb-4">Mentaler & spiritueller Plan</div>
+
+          <div className="mb-4">
+            <div className="text-[10px] font-mono uppercase tracking-[0.1em] text-[#76746E] mb-2">Bereiche (optional)</div>
+            <div className="flex flex-wrap gap-2">
+              {MIND_AREAS.map(a => (
+                <button
+                  key={a}
+                  onClick={() => setAreas(p => p.includes(a) ? p.filter(x => x !== a) : [...p, a])}
+                  className={`px-3 py-1 rounded-full text-xs border transition-all ${
+                    areas.includes(a)
+                      ? "border-[#C084FC]/50 bg-[#C084FC]/10 text-[#C084FC]"
+                      : "border-white/10 text-[#76746E] hover:text-[#B8B6B0]"
+                  }`}
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-3">
             <div>
-              <label className="block text-[10px] font-mono uppercase tracking-[0.1em] text-[#76746E] mb-1.5">Finanzielles Ziel *</label>
+              <label className="block text-[10px] font-mono uppercase tracking-[0.1em] text-[#76746E] mb-1.5">Was willst du erreichen? *</label>
               <textarea
                 rows={2}
                 value={goal}
                 onChange={e => setGoal(e.target.value)}
-                placeholder="z.B. €50.000 Eigenkapital bis Dez 2026, Investment-Portfolio aufbauen, finanziell unabhängig werden"
+                placeholder="z.B. Mehr mentale Klarheit, weniger Stress, täglich meditieren, 24 Bücher im Jahr lesen"
                 className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-sm text-[#FAFAFA] placeholder-[#76746E] focus:outline-none focus:border-white/20 resize-none"
               />
             </div>
@@ -209,31 +207,15 @@ export default function FinancePage() {
               label="Aktueller Stand"
               value={currentState}
               onChange={e => setCurrentState(e.target.value)}
-              placeholder="z.B. €8.000 Erspartes, unregelmäßiges Einkommen als Selbstständiger"
+              placeholder="z.B. Meditiere gelegentlich, lese ~1 Buch/Monat, oft gestresst"
             />
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Monatl. Einkommen (€)"
-                type="number"
-                value={monthlyIncome}
-                onChange={e => setMonthlyIncome(e.target.value)}
-                placeholder="z.B. 3500"
-              />
-              <Input
-                label="Monatl. Ausgaben (€)"
-                type="number"
-                value={monthlyExpenses}
-                onChange={e => setMonthlyExpenses(e.target.value)}
-                placeholder="z.B. 2200"
-              />
-            </div>
             <div className="flex gap-2 flex-wrap">
-              {["6 Monate", "1 Jahr", "2 Jahre", "5 Jahre"].map(t => (
+              {["4 Wochen", "3 Monate", "6 Monate", "1 Jahr"].map(t => (
                 <button
                   key={t}
                   onClick={() => setTimeframe(t)}
                   className={`px-3 py-1 rounded-full text-xs border transition-all ${
-                    timeframe === t ? "border-[#6BE3A4]/50 bg-[#6BE3A4]/10 text-[#6BE3A4]" : "border-white/10 text-[#76746E]"
+                    timeframe === t ? "border-[#C084FC]/50 bg-[#C084FC]/10 text-[#C084FC]" : "border-white/10 text-[#76746E]"
                   }`}
                 >
                   {t}
@@ -246,7 +228,7 @@ export default function FinancePage() {
 
           <div className="flex gap-2 mt-4">
             <Button variant="primary" onClick={generate} loading={generating}>
-              {generating ? "Wird berechnet..." : "Plan generieren"}
+              {generating ? "Wird erstellt..." : "Plan generieren"}
             </Button>
             <Button variant="secondary" onClick={() => { setShowForm(false); setPreview(null); }}>Abbrechen</Button>
           </div>
@@ -255,19 +237,19 @@ export default function FinancePage() {
 
       {preview && (
         <div className="space-y-4">
-          <div className="p-4 rounded-2xl border border-[#6BE3A4]/30 bg-[#6BE3A4]/5">
-            <div className="text-xs font-bold text-[#6BE3A4] mb-2">Finanz-Assessment</div>
+          <div className="p-4 rounded-2xl border border-[#C084FC]/30 bg-[#C084FC]/5">
+            <div className="text-xs font-bold text-[#C084FC] mb-2">Coach-Einschätzung</div>
             <p className="text-sm text-[#B8B6B0] leading-relaxed">{preview.personalityFit}</p>
           </div>
           <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.03]">
-            <div className="text-[9px] font-mono uppercase text-[#76746E] mb-1">Wichtigste Aktion</div>
+            <div className="text-[9px] font-mono uppercase text-[#76746E] mb-1">Tägliche Praxis</div>
             <p className="text-base font-bold text-[#FAFAFA]">{preview.dailyAction}</p>
           </div>
-          <div className="p-4 rounded-2xl border border-[#6BE3A4]/20 bg-[#6BE3A4]/5">
-            <div className="text-[9px] font-mono uppercase text-[#6BE3A4] mb-2">Erste Schritte</div>
+          <div className="p-4 rounded-2xl border border-[#C084FC]/20 bg-[#C084FC]/5">
+            <div className="text-[9px] font-mono uppercase text-[#C084FC] mb-2">Diese Woche starten</div>
             {preview.quickWins?.map((w, i) => (
               <div key={i} className="flex gap-2 mb-1.5">
-                <span className="text-[#6BE3A4]">→</span>
+                <span className="text-[#C084FC]">→</span>
                 <span className="text-sm text-[#B8B6B0]">{w}</span>
               </div>
             ))}

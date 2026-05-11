@@ -289,6 +289,23 @@ export async function initSchema(): Promise<void> {
         goal_ml INTEGER NOT NULL DEFAULT 2500,
         updated_at INTEGER DEFAULT (unixepoch())
       )`,
+      `CREATE TABLE IF NOT EXISTS plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        goal_description TEXT,
+        current_state TEXT,
+        timeframe TEXT,
+        personality_fit TEXT,
+        fit_level TEXT DEFAULT 'aligned',
+        daily_action TEXT,
+        next_milestone TEXT,
+        quick_wins TEXT,
+        plan_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT DEFAULT 'active',
+        created_at INTEGER DEFAULT (unixepoch()),
+        updated_at INTEGER DEFAULT (unixepoch())
+      )`,
     ].map((sql) => ({ sql, args: [] as InArgs })),
     "write"
   );
