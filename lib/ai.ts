@@ -1,12 +1,17 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { dbGet } from "./db";
 
-let _client: Anthropic | null = null;
+export async function getAIClient(): Promise<Anthropic> {
+  const envKey = process.env.ANTHROPIC_API_KEY;
+  if (envKey) return new Anthropic({ apiKey: envKey });
 
-export function getAIClient(): Anthropic {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY not set");
-  if (!_client) _client = new Anthropic({ apiKey: key });
-  return _client;
+  const row = await dbGet<{ value: string }>(
+    "SELECT value FROM settings WHERE key = 'anthropic_api_key'"
+  );
+  if (!row?.value) {
+    throw new Error("ANTHROPIC_API_KEY nicht konfiguriert. Settings → AI & API Keys → Anthropic Key eintragen.");
+  }
+  return new Anthropic({ apiKey: row.value });
 }
 
 export async function generateDailyPlan(context: {
@@ -19,7 +24,7 @@ export async function generateDailyPlan(context: {
   wakeTime?: string;
   sleepTime?: string;
 }): Promise<{ tasks: string[]; insight: string; urgentAlert?: string }> {
-  const client = getAIClient();
+  const client = await getAIClient();
 
   const systemPrompt = `You are a ruthless personal performance coach AI. You have full context of the user's health, fitness, nutrition, goals, and habits. You speak directly and hold them accountable. You calculate exactly what they need to do TODAY to stay on track for their long-term goals. You consider their recovery state (HRV, sleep) when recommending training intensity. You are specific with numbers.`;
 
@@ -71,7 +76,7 @@ export async function generateJournalInsight(entry: {
   energy?: number;
   date: string;
 }): Promise<string> {
-  const client = getAIClient();
+  const client = await getAIClient();
 
   const msg = await client.messages.create({
     model: "claude-haiku-4-5",
@@ -92,7 +97,7 @@ export async function generateAIInsights(allData: {
   avgCalories: number;
   financialHealth?: { savings_rate: number; top_category: string };
 }): Promise<Array<{ type: string; content: string; priority: string; category?: string }>> {
-  const client = getAIClient();
+  const client = await getAIClient();
 
   const msg = await client.messages.create({
     model: "claude-haiku-4-5",
@@ -151,7 +156,7 @@ export async function generateGoalPlan(params: {
   motivation?: string;
   pastExperience?: string;
 }): Promise<GoalPlan> {
-  const client = getAIClient();
+  const client = await getAIClient();
 
   const msg = await client.messages.create({
     model: "claude-sonnet-4-6",
@@ -198,7 +203,7 @@ export async function generateTodayBriefing(plans: Array<{
   next_milestone: string;
 }>): Promise<string> {
   if (plans.length === 0) return "";
-  const client = getAIClient();
+  const client = await getAIClient();
 
   const msg = await client.messages.create({
     model: "claude-haiku-4-5",
@@ -272,7 +277,7 @@ export async function generateCoachingPlan(params: {
   nutrition7days: { avg_cal: number; avg_protein: number; avg_carbs: number; avg_fat: number };
   personalRecords: Array<{ exercise_name: string; value: number; unit: string }>;
 }): Promise<CoachingPlan> {
-  const client = getAIClient();
+  const client = await getAIClient();
 
   const focusDescriptions: Record<string, string> = {
     strength: "maximal strength via progressive overload and compound movements",
@@ -341,7 +346,7 @@ Return a JSON object with EXACTLY this structure (no markdown, raw JSON only):
 }
 
 export async function chatWithAI(message: string, context: string): Promise<string> {
-  const client = getAIClient();
+  const client = await getAIClient();
 
   const msg = await client.messages.create({
     model: "claude-sonnet-4-6",
