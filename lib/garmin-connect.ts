@@ -42,17 +42,18 @@ async function rawRequest(
     };
 
     const req = https.request(reqOpts, (res) => {
-      let body = "";
-      res.on("data", (c) => (body += c));
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
       res.on("end", () =>
         resolve({
           status: res.statusCode ?? 0,
           location: res.headers.location ?? null,
           setCookies: ([] as string[]).concat(res.headers["set-cookie"] ?? []),
-          body,
+          body: Buffer.concat(chunks).toString("utf8"),
         })
       );
     });
+    req.setTimeout(8000, () => req.destroy(new Error("Garmin-Server antwortet nicht (Timeout)")));
     req.on("error", reject);
     if (opts.body) req.write(opts.body);
     req.end();
@@ -102,6 +103,10 @@ function extractCsrf(html: string): string | null {
     html.match(/name=["']_csrf["']\s+value=["']([^"']+)["']/)?.[1] ??
     html.match(/value=["']([^"']+)["']\s+name=["']_csrf["']/)?.[1] ??
     html.match(/"_csrf"\s*:\s*"([^"]+)"/)?.[1] ??
+    html.match(/name="_csrf"\s+[^>]*value="([^"]+)"/)?.[1] ??
+    html.match(/id="csrf"\s+[^>]*value="([^"]+)"/)?.[1] ??
+    html.match(/"csrfToken"\s*:\s*"([^"]+)"/)?.[1] ??
+    html.match(/data-csrf=["']([^"']+)["']/)?.[1] ??
     null
   );
 }
@@ -120,7 +125,10 @@ export async function garminConnectLogin(
 
   const csrf = extractCsrf(page.body);
   if (!csrf) {
-    return { error: "Garmin-Loginseite konnte nicht gelesen werden (CSRF fehlt). Versuche es erneut." };
+    const preview = page.body.slice(0, 120).replace(/\s+/g, " ").trim();
+    return {
+      error: `Garmin-Login: CSRF nicht gefunden (Status ${page.status}). Seitenanfang: "${preview}"`,
+    };
   }
 
   // Step 2 — POST credentials

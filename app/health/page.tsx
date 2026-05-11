@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import { Card, SectionTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input, Select } from "@/components/ui/Input";
+import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { todayStr, formatDate, formatTime, hrvStatus, bodyBatteryColor } from "@/lib/utils";
 
@@ -24,6 +24,18 @@ interface HealthEntry {
   active_calories?: number;
   spo2_avg?: number;
   source?: string;
+}
+
+interface BodyMetric {
+  id: number;
+  date: string;
+  weight_kg?: number;
+  body_fat_pct?: number;
+  muscle_mass_kg?: number;
+  waist_cm?: number;
+  chest_cm?: number;
+  arm_cm?: number;
+  notes?: string;
 }
 
 const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; name: string; color: string }>; label?: string }) => {
@@ -56,15 +68,29 @@ export default function HealthPage() {
     stress_avg: "", steps: "", active_calories: "", spo2_avg: "",
   });
 
+  // Body metrics state
+  const [bodyMetrics, setBodyMetrics] = useState<BodyMetric[]>([]);
+  const [latestBody, setLatestBody] = useState<BodyMetric | null>(null);
+  const [bodyModalOpen, setBodyModalOpen] = useState(false);
+  const [bodyApiError, setBodyApiError] = useState<string | null>(null);
+  const [bodyForm, setBodyForm] = useState({
+    date: today, weight_kg: "", body_fat_pct: "", muscle_mass_kg: "",
+    waist_cm: "", chest_cm: "", arm_cm: "", notes: "",
+  });
+
   const load = useCallback(async () => {
-    const [todayRes, histRes] = await Promise.all([
+    const [todayRes, histRes, bodyRes] = await Promise.all([
       fetch(`/api/health?date=${today}`),
       fetch("/api/health?days=14"),
+      fetch("/api/body?days=60"),
     ]);
     const todayJson = await todayRes.json();
     const histJson = await histRes.json();
+    const bodyJson = await bodyRes.json();
     setTodayData(todayJson.data);
     setData((histJson.data as HealthEntry[]).reverse());
+    setBodyMetrics((bodyJson.data as BodyMetric[] ?? []).reverse());
+    setLatestBody(bodyJson.latest ?? null);
   }, [today]);
 
   useEffect(() => { load(); }, [load]);
@@ -132,6 +158,36 @@ export default function HealthPage() {
         spo2_avg: todayData.spo2_avg?.toString() ?? "",
       }));
     }
+  };
+
+  const saveBodyEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBodyApiError(null);
+    try {
+      const payload: Record<string, string | number> = { date: bodyForm.date };
+      if (bodyForm.weight_kg) payload.weight_kg = parseFloat(bodyForm.weight_kg);
+      if (bodyForm.body_fat_pct) payload.body_fat_pct = parseFloat(bodyForm.body_fat_pct);
+      if (bodyForm.muscle_mass_kg) payload.muscle_mass_kg = parseFloat(bodyForm.muscle_mass_kg);
+      if (bodyForm.waist_cm) payload.waist_cm = parseFloat(bodyForm.waist_cm);
+      if (bodyForm.chest_cm) payload.chest_cm = parseFloat(bodyForm.chest_cm);
+      if (bodyForm.arm_cm) payload.arm_cm = parseFloat(bodyForm.arm_cm);
+      if (bodyForm.notes) payload.notes = bodyForm.notes;
+
+      const res = await fetch("/api/body", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Fehler ${res.status}`);
+      setBodyModalOpen(false);
+      await load();
+    } catch (err) { setBodyApiError(String(err).replace("Error: ", "")); }
+  };
+
+  const deleteBodyEntry = async (id: number) => {
+    await fetch(`/api/body?id=${id}`, { method: "DELETE" });
+    await load();
   };
 
   const avgHRV = data.length ? (data.reduce((s, d) => s + (d.hrv_avg ?? 0), 0) / data.filter(d => d.hrv_avg).length).toFixed(0) : "—";
@@ -319,6 +375,130 @@ export default function HealthPage() {
           </Card>
         </div>
       )}
+
+      {/* Body Metrics */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <SectionTitle>Body Metrics</SectionTitle>
+          <Button variant="primary" size="sm" onClick={() => {
+            setBodyForm({
+              date: today,
+              weight_kg: latestBody?.weight_kg?.toString() ?? "",
+              body_fat_pct: latestBody?.body_fat_pct?.toString() ?? "",
+              muscle_mass_kg: latestBody?.muscle_mass_kg?.toString() ?? "",
+              waist_cm: latestBody?.waist_cm?.toString() ?? "",
+              chest_cm: latestBody?.chest_cm?.toString() ?? "",
+              arm_cm: latestBody?.arm_cm?.toString() ?? "",
+              notes: "",
+            });
+            setBodyModalOpen(true);
+          }}>+ Log Body</Button>
+        </div>
+
+        {latestBody ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+            {[
+              { label: "Weight", value: latestBody.weight_kg ? `${latestBody.weight_kg}kg` : "—", icon: "⚖️", color: "#6BE3A4" },
+              { label: "Body Fat", value: latestBody.body_fat_pct ? `${latestBody.body_fat_pct}%` : "—", icon: "📊", color: "#F2C063" },
+              { label: "Muscle", value: latestBody.muscle_mass_kg ? `${latestBody.muscle_mass_kg}kg` : "—", icon: "💪", color: "#60A5FA" },
+              { label: "Waist", value: latestBody.waist_cm ? `${latestBody.waist_cm}cm` : "—", icon: "📏", color: "#A78BFA" },
+              { label: "Chest", value: latestBody.chest_cm ? `${latestBody.chest_cm}cm` : "—", icon: "📏", color: "#A78BFA" },
+              { label: "Arm", value: latestBody.arm_cm ? `${latestBody.arm_cm}cm` : "—", icon: "📏", color: "#A78BFA" },
+            ].map(m => (
+              <Card key={m.label} className="text-center py-3">
+                <div className="text-xl mb-1">{m.icon}</div>
+                <div className="text-xl font-bold font-mono" style={{ color: m.color }}>{m.value}</div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.08em] text-[#76746E] mt-0.5">{m.label}</div>
+                <div className="text-[9px] text-[#76746E] mt-0.5">{formatDate(latestBody.date, "d MMM")}</div>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="mb-4">
+            <div className="text-center py-6 text-[#76746E]">
+              <div className="text-3xl mb-2">⚖️</div>
+              <div className="text-sm mb-3">No body measurements logged yet.</div>
+              <Button variant="primary" size="sm" onClick={() => setBodyModalOpen(true)}>Log First Entry</Button>
+            </div>
+          </Card>
+        )}
+
+        {bodyMetrics.filter(m => m.weight_kg).length > 1 && (
+          <Card className="mb-4">
+            <div className="text-[11px] font-mono uppercase tracking-[0.12em] text-[#76746E] mb-3">Weight Trend</div>
+            <ResponsiveContainer width="100%" height={120}>
+              <AreaChart data={bodyMetrics.filter(m => m.weight_kg)}>
+                <defs>
+                  <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6BE3A4" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#6BE3A4" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" tick={{ fill: "#76746E", fontSize: 9 }} tickFormatter={d => formatDate(d, "d MMM")} />
+                <YAxis tick={{ fill: "#76746E", fontSize: 9 }} domain={["auto", "auto"]} />
+                <Tooltip content={<CustomTooltip />} />
+                <Area type="monotone" dataKey="weight_kg" stroke="#6BE3A4" fill="url(#weightGrad)" strokeWidth={1.5} dot={{ r: 2, fill: "#6BE3A4" }} name="Weight (kg)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </Card>
+        )}
+
+        {bodyMetrics.length > 0 && (
+          <Card>
+            <div className="text-[11px] font-mono uppercase tracking-[0.12em] text-[#76746E] mb-3">History</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-mono">
+                <thead>
+                  <tr className="text-[#76746E] text-left border-b border-white/5">
+                    {["Date", "Weight", "Body Fat", "Muscle", "Waist", "Chest", "Arm", ""].map(h => (
+                      <th key={h} className="pb-2 pr-4 font-normal uppercase tracking-wider">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {[...bodyMetrics].reverse().map(row => (
+                    <tr key={row.id} className="group hover:bg-white/[0.02] transition-colors">
+                      <td className="py-2 pr-4 text-[#B8B6B0]">{formatDate(row.date, "EEE d MMM")}</td>
+                      <td className="py-2 pr-4 text-[#6BE3A4]">{row.weight_kg ? `${row.weight_kg}kg` : "—"}</td>
+                      <td className="py-2 pr-4 text-[#F2C063]">{row.body_fat_pct ? `${row.body_fat_pct}%` : "—"}</td>
+                      <td className="py-2 pr-4 text-[#60A5FA]">{row.muscle_mass_kg ? `${row.muscle_mass_kg}kg` : "—"}</td>
+                      <td className="py-2 pr-4 text-[#B8B6B0]">{row.waist_cm ? `${row.waist_cm}cm` : "—"}</td>
+                      <td className="py-2 pr-4 text-[#B8B6B0]">{row.chest_cm ? `${row.chest_cm}cm` : "—"}</td>
+                      <td className="py-2 pr-4 text-[#B8B6B0]">{row.arm_cm ? `${row.arm_cm}cm` : "—"}</td>
+                      <td className="py-2">
+                        <button onClick={() => deleteBodyEntry(row.id)} className="opacity-0 group-hover:opacity-60 hover:!opacity-100 text-[#FF6B6B] text-base leading-none">×</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+      </div>
+
+      {/* Body metrics modal */}
+      <Modal open={bodyModalOpen} onClose={() => { setBodyModalOpen(false); setBodyApiError(null); }} title="Log Body Metrics">
+        <form onSubmit={saveBodyEntry} className="space-y-4">
+          {bodyApiError && <div className="px-3 py-2 rounded-xl bg-[#FF6B6B]/10 border border-[#FF6B6B]/20 text-[#FF6B6B] text-xs">{bodyApiError}</div>}
+          <Input label="Date" type="date" value={bodyForm.date} onChange={e => setBodyForm(p => ({ ...p, date: e.target.value }))} />
+          <div className="grid grid-cols-3 gap-3">
+            <Input label="Weight (kg)" type="number" step="0.1" value={bodyForm.weight_kg} onChange={e => setBodyForm(p => ({ ...p, weight_kg: e.target.value }))} placeholder="80.5" />
+            <Input label="Body Fat (%)" type="number" step="0.1" value={bodyForm.body_fat_pct} onChange={e => setBodyForm(p => ({ ...p, body_fat_pct: e.target.value }))} placeholder="18.5" />
+            <Input label="Muscle (kg)" type="number" step="0.1" value={bodyForm.muscle_mass_kg} onChange={e => setBodyForm(p => ({ ...p, muscle_mass_kg: e.target.value }))} placeholder="65.0" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Input label="Waist (cm)" type="number" step="0.5" value={bodyForm.waist_cm} onChange={e => setBodyForm(p => ({ ...p, waist_cm: e.target.value }))} placeholder="84" />
+            <Input label="Chest (cm)" type="number" step="0.5" value={bodyForm.chest_cm} onChange={e => setBodyForm(p => ({ ...p, chest_cm: e.target.value }))} placeholder="102" />
+            <Input label="Arm (cm)" type="number" step="0.5" value={bodyForm.arm_cm} onChange={e => setBodyForm(p => ({ ...p, arm_cm: e.target.value }))} placeholder="38" />
+          </div>
+          <Input label="Notes" value={bodyForm.notes} onChange={e => setBodyForm(p => ({ ...p, notes: e.target.value }))} placeholder="Morning, after workout…" />
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="ghost" type="button" onClick={() => setBodyModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">Save</Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Manual log modal */}
       <Modal open={modalOpen} onClose={() => { setModalOpen(false); setApiError(null); }} title="Log Health Data">

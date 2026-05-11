@@ -76,17 +76,18 @@ function SettingsContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: garminEmail, password: garminPassword }),
       });
-      const data = await res.json();
+      let data: Record<string, unknown> = {};
+      try { data = await res.json(); } catch {}
       if (data.ok) {
         setGarminStatus(`✓ Verbunden als ${data.displayName}`);
         setIntegrations(p => ({ ...p, garmin: true }));
         setGarminEmail("");
         setGarminPassword("");
       } else {
-        setGarminStatus(`✗ ${data.error}`);
+        setGarminStatus(`✗ ${(data.error as string) ?? `Serverfehler ${res.status}`}`);
       }
-    } catch {
-      setGarminStatus("✗ Verbindung fehlgeschlagen");
+    } catch (err) {
+      setGarminStatus(`✗ ${String(err).replace("Error: ", "")}`);
     } finally {
       setGarminLoading(false);
     }

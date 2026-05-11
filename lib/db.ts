@@ -54,7 +54,6 @@ let _initialized = false;
 
 export async function initSchema(): Promise<void> {
   if (_initialized) return;
-  _initialized = true;
 
   const db = getDb();
   await db.batch(
@@ -250,15 +249,57 @@ export async function initSchema(): Promise<void> {
       `INSERT OR IGNORE INTO streaks (type, current_count, longest_count) VALUES ('daily_goals', 0, 0)`,
       `INSERT OR IGNORE INTO streaks (type, current_count, longest_count) VALUES ('workouts', 0, 0)`,
       `INSERT OR IGNORE INTO streaks (type, current_count, longest_count) VALUES ('journal', 0, 0)`,
+      `INSERT OR IGNORE INTO streaks (type, current_count, longest_count) VALUES ('habits', 0, 0)`,
+      `CREATE TABLE IF NOT EXISTS habits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        icon TEXT DEFAULT '✓',
+        color TEXT DEFAULT '#6BE3A4',
+        category TEXT DEFAULT 'health',
+        time_of_day TEXT DEFAULT 'anytime',
+        sort_order INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1,
+        created_at INTEGER DEFAULT (unixepoch())
+      )`,
+      `CREATE TABLE IF NOT EXISTS habit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        habit_id INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        done INTEGER DEFAULT 1,
+        note TEXT,
+        created_at INTEGER DEFAULT (unixepoch()),
+        UNIQUE(habit_id, date)
+      )`,
+      `CREATE TABLE IF NOT EXISTS body_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL UNIQUE,
+        weight_kg REAL,
+        body_fat_pct REAL,
+        muscle_mass_kg REAL,
+        waist_cm REAL,
+        chest_cm REAL,
+        arm_cm REAL,
+        notes TEXT,
+        created_at INTEGER DEFAULT (unixepoch())
+      )`,
+      `CREATE TABLE IF NOT EXISTS water_intake (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL UNIQUE,
+        amount_ml INTEGER NOT NULL DEFAULT 0,
+        goal_ml INTEGER NOT NULL DEFAULT 2500,
+        updated_at INTEGER DEFAULT (unixepoch())
+      )`,
     ].map((sql) => ({ sql, args: [] as InArgs })),
     "write"
   );
 
-  // Column migrations for existing databases (ignore "duplicate column" errors)
+  // Column migrations for existing databases (ignore errors)
   for (const sql of [
     "ALTER TABLE calendar_events ADD COLUMN source TEXT DEFAULT 'manual'",
     "ALTER TABLE calendar_events ADD COLUMN google_event_id TEXT",
   ]) {
     try { await db.execute({ sql, args: [] }); } catch { /* already exists */ }
   }
+
+  _initialized = true;
 }

@@ -4,54 +4,62 @@ import { todayStr } from "@/lib/utils";
 import { generateJournalInsight } from "@/lib/ai";
 
 export async function GET(req: NextRequest) {
-  await initSchema();
-  const { searchParams } = new URL(req.url);
-  const date = searchParams.get("date") ?? todayStr();
-  const limit = parseInt(searchParams.get("limit") ?? "30");
+  try {
+    await initSchema();
+    const { searchParams } = new URL(req.url);
+    const date = searchParams.get("date") ?? todayStr();
+    const limit = parseInt(searchParams.get("limit") ?? "30");
 
-  if (searchParams.get("all") === "true") {
-    const entries = await dbAll("SELECT * FROM journal_entries ORDER BY date DESC LIMIT ?", [limit]);
-    return NextResponse.json({ entries });
+    if (searchParams.get("all") === "true") {
+      const entries = await dbAll("SELECT * FROM journal_entries ORDER BY date DESC LIMIT ?", [limit]);
+      return NextResponse.json({ entries });
+    }
+
+    const entry = await dbGet("SELECT * FROM journal_entries WHERE date = ?", [date]);
+    return NextResponse.json({ entry: entry ?? null });
+  } catch (err) {
+    return NextResponse.json({ error: String(err).replace(/^Error: /, "") }, { status: 500 });
   }
-
-  const entry = await dbGet("SELECT * FROM journal_entries WHERE date = ?", [date]);
-  return NextResponse.json({ entry: entry ?? null });
 }
 
 export async function POST(req: NextRequest) {
-  await initSchema();
-  const body = await req.json();
-  const { date, content, mood, energy, gratitude, wins, challenges } = body;
-  const entryDate = date ?? todayStr();
+  try {
+    await initSchema();
+    const body = await req.json();
+    const { date, content, mood, energy, gratitude, wins, challenges } = body;
+    const entryDate = date ?? todayStr();
 
-  const existing = await dbGet<{ id: number }>("SELECT id FROM journal_entries WHERE date = ?", [entryDate]);
+    const existing = await dbGet<{ id: number }>("SELECT id FROM journal_entries WHERE date = ?", [entryDate]);
 
-  let aiInsight: string | undefined;
-  if (content && process.env.ANTHROPIC_API_KEY) {
-    try {
-      aiInsight = await generateJournalInsight({ content, mood, energy, date: entryDate });
-    } catch {
-      // AI is optional
+    let aiInsight: string | undefined;
+    if (content && process.env.ANTHROPIC_API_KEY) {
+      try {
+        aiInsight = await generateJournalInsight({ content, mood, energy, date: entryDate });
+      } catch {
+        // AI is optional
+      }
     }
+
+    if (existing) {
+      await dbRun(
+        `UPDATE journal_entries SET content = ?, mood = ?, energy = ?, gratitude = ?, wins = ?, challenges = ?,
+         ai_insight = COALESCE(?, ai_insight), updated_at = unixepoch() WHERE date = ?`,
+        [content, mood ?? null, energy ?? null, gratitude ?? null, wins ?? null, challenges ?? null, aiInsight ?? null, entryDate]
+      );
+    } else {
+      await dbRun(
+        "INSERT INTO journal_entries (date, content, mood, energy, gratitude, wins, challenges, ai_insight) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [entryDate, content, mood ?? null, energy ?? null, gratitude ?? null, wins ?? null, challenges ?? null, aiInsight ?? null]
+      );
+    }
+
+    await updateStreak("journal", entryDate);
+
+    const entry = await dbGet("SELECT * FROM journal_entries WHERE date = ?", [entryDate]);
+    return NextResponse.json({ entry });
+  } catch (err) {
+    return NextResponse.json({ error: String(err).replace(/^Error: /, "") }, { status: 500 });
   }
-
-  if (existing) {
-    await dbRun(
-      `UPDATE journal_entries SET content = ?, mood = ?, energy = ?, gratitude = ?, wins = ?, challenges = ?,
-       ai_insight = COALESCE(?, ai_insight), updated_at = unixepoch() WHERE date = ?`,
-      [content, mood ?? null, energy ?? null, gratitude ?? null, wins ?? null, challenges ?? null, aiInsight ?? null, entryDate]
-    );
-  } else {
-    await dbRun(
-      "INSERT INTO journal_entries (date, content, mood, energy, gratitude, wins, challenges, ai_insight) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [entryDate, content, mood ?? null, energy ?? null, gratitude ?? null, wins ?? null, challenges ?? null, aiInsight ?? null]
-    );
-  }
-
-  await updateStreak("journal", entryDate);
-
-  const entry = await dbGet("SELECT * FROM journal_entries WHERE date = ?", [entryDate]);
-  return NextResponse.json({ entry });
 }
 
 async function updateStreak(type: string, date: string) {
